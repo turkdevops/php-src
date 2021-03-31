@@ -1039,6 +1039,11 @@ ZEND_FUNCTION(trait_exists)
 }
 /* }}} */
 
+ZEND_FUNCTION(enum_exists)
+{
+	class_exists_impl(INTERNAL_FUNCTION_PARAM_PASSTHRU, ZEND_ACC_ENUM, 0);
+}
+
 /* {{{ Checks if the function exists */
 ZEND_FUNCTION(function_exists)
 {
@@ -1273,7 +1278,7 @@ static inline void get_declared_class_impl(INTERNAL_FUNCTION_PARAMETERS, int fla
 				ZEND_ASSERT(Z_TYPE_P(zv) == IS_ALIAS_PTR);
 				ZVAL_STR_COPY(&tmp, key);
 			}
-			zend_hash_next_index_insert(Z_ARRVAL_P(return_value), &tmp);
+			zend_hash_next_index_insert_new(Z_ARRVAL_P(return_value), &tmp);
 		}
 	} ZEND_HASH_FOREACH_END();
 }

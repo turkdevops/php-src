@@ -26,6 +26,7 @@
 #include "zend_smart_str.h"
 #include "zend_operators.h"
 #include "zend_exceptions.h"
+#include "zend_enum.h"
 
 ZEND_API zend_class_entry* (*zend_inheritance_cache_get)(zend_class_entry *ce, zend_class_entry *parent, zend_class_entry **traits_and_interfaces) = NULL;
 ZEND_API zend_class_entry* (*zend_inheritance_cache_add)(zend_class_entry *ce, zend_class_entry *proto, zend_class_entry *parent, zend_class_entry **traits_and_interfaces, HashTable *dependencies) = NULL;
@@ -1815,7 +1816,7 @@ static void zend_traits_init_trait_structures(zend_class_entry *ce, zend_class_e
 			lc_trait_name = zend_string_tolower(cur_method_ref->class_name);
 			trait = zend_hash_find_ptr(EG(class_table), lc_trait_name);
 			zend_string_release_ex(lc_trait_name, 0);
-			if (!trait && !(trait->ce_flags & ZEND_ACC_LINKED)) {
+			if (!trait || !(trait->ce_flags & ZEND_ACC_LINKED)) {
 				zend_error_noreturn(E_COMPILE_ERROR, "Could not find trait %s", ZSTR_VAL(cur_method_ref->class_name));
 			}
 			zend_check_trait_usage(ce, trait, traits);
@@ -2007,10 +2008,8 @@ static void zend_do_traits_property_binding(zend_class_entry *ce, zend_class_ent
 	zend_property_info *coliding_prop;
 	zend_property_info *new_prop;
 	zend_string* prop_name;
-	const char* class_name_unused;
 	bool not_compatible;
 	zval* prop_value;
-	uint32_t flags;
 	zend_string *doc_comment;
 
 	/* In the following steps the properties are inserted into the property table
@@ -2022,22 +2021,8 @@ static void zend_do_traits_property_binding(zend_class_entry *ce, zend_class_ent
 		if (!traits[i]) {
 			continue;
 		}
-		ZEND_HASH_FOREACH_PTR(&traits[i]->properties_info, property_info) {
-			/* first get the unmangeld name if necessary,
-			 * then check whether the property is already there
-			 */
-			flags = property_info->flags;
-			if (flags & ZEND_ACC_PUBLIC) {
-				prop_name = zend_string_copy(property_info->name);
-			} else {
-				const char *pname;
-				size_t pname_len;
-
-				/* for private and protected we need to unmangle the names */
-				zend_unmangle_property_name_ex(property_info->name,
-											&class_name_unused, &pname, &pname_len);
-				prop_name = zend_string_init(pname, pname_len, 0);
-			}
+		ZEND_HASH_FOREACH_STR_KEY_PTR(&traits[i]->properties_info, prop_name, property_info) {
+			uint32_t flags = property_info->flags;
 
 			/* next: check for conflicts with current class */
 			if ((coliding_prop = zend_hash_find_ptr(&ce->properties_info, prop_name)) != NULL) {
@@ -2095,8 +2080,6 @@ static void zend_do_traits_property_binding(zend_class_entry *ce, zend_class_ent
 								ZSTR_VAL(prop_name),
 								ZSTR_VAL(ce->name));
 					}
-
-					zend_string_release_ex(prop_name, 0);
 					continue;
 				}
 			}
@@ -2123,8 +2106,6 @@ static void zend_do_traits_property_binding(zend_class_entry *ce, zend_class_ent
 					GC_ADDREF(new_prop->attributes);
 				}
 			}
-
-			zend_string_release_ex(prop_name, 0);
 		} ZEND_HASH_FOREACH_END();
 	}
 }
@@ -2684,6 +2665,12 @@ ZEND_API zend_class_entry *zend_do_link_class(zend_class_entry *ce, zend_string 
 		}
 	}
 
+#ifndef ZEND_WIN32
+	if (ce->ce_flags & ZEND_ACC_ENUM) {
+		/* We will add internal methods. */
+		is_cacheable = false;
+	}
+#endif
 
 	if (ce->ce_flags & ZEND_ACC_IMMUTABLE) {
 		if (is_cacheable) {
@@ -2725,6 +2712,12 @@ ZEND_API zend_class_entry *zend_do_link_class(zend_class_entry *ce, zend_string 
 	orig_linking_class = CG(current_linking_class);
 	CG(current_linking_class) = is_cacheable ? ce : NULL;
 
+	if (ce->ce_flags & ZEND_ACC_ENUM) {
+		/* Only register builtin enum methods during inheritance to avoid persisting them in
+		 * opcache. */
+		zend_enum_register_funcs(ce);
+	}
+
 	if (parent) {
 		if (!(parent->ce_flags & ZEND_ACC_LINKED)) {
 			add_dependency_obligation(ce, parent);
@@ -2755,6 +2748,9 @@ ZEND_API zend_class_entry *zend_do_link_class(zend_class_entry *ce, zend_string 
 		&& (ce->ce_flags & (ZEND_ACC_IMPLICIT_ABSTRACT_CLASS|ZEND_ACC_EXPLICIT_ABSTRACT_CLASS))
 	) {
 		zend_verify_abstract_class(ce);
+	}
+	if (ce->ce_flags & ZEND_ACC_ENUM) {
+		zend_verify_enum(ce);
 	}
 
 	zend_build_properties_info_table(ce);

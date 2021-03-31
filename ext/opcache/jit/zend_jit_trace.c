@@ -1843,6 +1843,19 @@ propagate_arg:
 				case ZEND_CHECK_UNDEF_ARGS:
 				case ZEND_INCLUDE_OR_EVAL:
 					max_used_stack = used_stack = -1;
+					break;
+				case ZEND_TYPE_CHECK:
+					if (opline->extended_value == MAY_BE_RESOURCE) {
+						// TODO: support for is_resource() ???
+						break;
+					}
+					if (op1_type != IS_UNKNOWN
+					 && (opline->extended_value == (1 << op1_type)
+					  || opline->extended_value == MAY_BE_ANY - (1 << op1_type))) {
+						/* add guards only for exact checks, to avoid code duplication */
+						ADD_OP1_TRACE_GUARD();
+					}
+					break;
 				default:
 					break;
 			}
@@ -3260,7 +3273,7 @@ static int zend_jit_trace_deoptimization(dasm_State             **Dst,
 						return 0;
 					}
 				} else {
-					if (reg == ZREG_ZVAL_COPY_R0
+					if (reg == ZREG_ZVAL_COPY_GPR0
 					 &&!zend_jit_escape_if_undef_r0(Dst, i, flags, opline)) {
 						return 0;
 					}
@@ -4900,6 +4913,7 @@ static const void *zend_jit_trace(zend_jit_trace_rec *trace_buffer, uint32_t par
 							break;
 						}
 						op1_info = OP1_INFO();
+						CHECK_OP1_TRACE_TYPE();
 						if ((opline->result_type & (IS_SMART_BRANCH_JMPZ|IS_SMART_BRANCH_JMPNZ)) != 0) {
 							bool exit_if_true = 0;
 							const zend_op *exit_opline = zend_jit_trace_get_exit_opline(p + 1, opline + 1, &exit_if_true);
@@ -6207,7 +6221,8 @@ done:
 						zend_call_info *call_info = jit_extension->func_info.callee_info;
 
 						while (call_info) {
-							if (call_info->caller_init_opline == init_opline) {
+							if (call_info->caller_init_opline == init_opline
+									&& !call_info->is_prototype) {
 								if (op_array->fn_flags & ZEND_ACC_TRAIT_CLONE) {
 									if (init_opline->opcode == ZEND_INIT_STATIC_METHOD_CALL
 									 && init_opline->op1_type != IS_CONST) {
@@ -6910,7 +6925,7 @@ static void zend_jit_dump_exit_info(zend_jit_trace_info *t)
 				fprintf(stderr, " ");
 				zend_dump_var(op_array, (j < op_array->last_var) ? IS_CV : 0, j);
 				fprintf(stderr, ":unknown(zval_try_addref)");
-			} else if (STACK_REG(stack, j) == ZREG_ZVAL_COPY_R0) {
+			} else if (STACK_REG(stack, j) == ZREG_ZVAL_COPY_GPR0) {
 				fprintf(stderr, " ");
 				zend_dump_var(op_array, (j < op_array->last_var) ? IS_CV : 0, j);
 				fprintf(stderr, ":unknown(zval_copy(%s))", zend_reg_name[0]);
@@ -7401,7 +7416,7 @@ int ZEND_FASTCALL zend_jit_trace_exit(uint32_t exit_num, zend_jit_registers_buf 
 	zend_jit_trace_stack *stack = t->stack_map + t->exit_info[exit_num].stack_offset;
 
 	if (t->exit_info[exit_num].flags & ZEND_JIT_EXIT_RESTORE_CALL) {
-		zend_execute_data *call = (zend_execute_data *)regs->r[ZREG_RX];
+		zend_execute_data *call = (zend_execute_data *)regs->gpr[ZREG_RX];
 		call->prev_execute_data = EX(call);
 		EX(call) = call;
 	}
@@ -7412,7 +7427,7 @@ int ZEND_FASTCALL zend_jit_trace_exit(uint32_t exit_num, zend_jit_registers_buf 
 				zend_long val;
 
 				if (STACK_REG(stack, i) < ZREG_NUM) {
-					val = regs->r[STACK_REG(stack, i)];
+					val = regs->gpr[STACK_REG(stack, i)];
 				} else if (STACK_REG(stack, i) == ZREG_LONG_MIN) {
 					val = ZEND_LONG_MIN;
 				} else if (STACK_REG(stack, i) == ZREG_LONG_MAX) {
@@ -7425,7 +7440,7 @@ int ZEND_FASTCALL zend_jit_trace_exit(uint32_t exit_num, zend_jit_registers_buf 
 				double val;
 
 				if (STACK_REG(stack, i) < ZREG_NUM) {
-					val = regs->xmm[STACK_REG(stack, i) - ZREG_XMM0];
+					val = regs->fpr[STACK_REG(stack, i) - ZREG_FIRST_FPR];
 				} else if (STACK_REG(stack, i) == ZREG_LONG_MIN_MINUS_1) {
 					val = (double)ZEND_LONG_MIN - 1.0;
 				} else if (STACK_REG(stack, i) == ZREG_LONG_MAX_PLUS_1) {
@@ -7443,8 +7458,8 @@ int ZEND_FASTCALL zend_jit_trace_exit(uint32_t exit_num, zend_jit_registers_buf 
 				ZVAL_NULL(EX_VAR_NUM(i));
 			} else if (STACK_REG(stack, i) == ZREG_ZVAL_TRY_ADDREF) {
 				Z_TRY_ADDREF_P(EX_VAR_NUM(i));
-			} else if (STACK_REG(stack, i) == ZREG_ZVAL_COPY_R0) {
-				zval *val = (zval*)regs->r[0];
+			} else if (STACK_REG(stack, i) == ZREG_ZVAL_COPY_GPR0) {
+				zval *val = (zval*)regs->gpr[0];
 
 				if (UNEXPECTED(Z_TYPE_P(val) == IS_UNDEF)) {
 					/* Undefined array index or property */
@@ -7485,7 +7500,7 @@ int ZEND_FASTCALL zend_jit_trace_exit(uint32_t exit_num, zend_jit_registers_buf 
 			}
 		}
 		if (t->exit_info[exit_num].flags & ZEND_JIT_EXIT_METHOD_CALL) {
-			zend_function *func = (zend_function*)regs->r[0];
+			zend_function *func = (zend_function*)regs->gpr[0];
 
 			if (UNEXPECTED(func->common.fn_flags & ZEND_ACC_CALL_VIA_TRAMPOLINE)) {
 				zend_string_release_ex(func->common.function_name, 0);
