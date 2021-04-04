@@ -155,7 +155,10 @@ static zend_object *spl_filesystem_object_new_ex(zend_class_entry *class_type)
 {
 	spl_filesystem_object *intern;
 
-	intern = zend_object_alloc(sizeof(spl_filesystem_object), class_type);
+	intern = emalloc(sizeof(spl_filesystem_object) + zend_object_properties_size(class_type));
+	memset(intern, 0,
+		MAX(XtOffsetOf(spl_filesystem_object, u.dir.entry),
+			XtOffsetOf(spl_filesystem_object, u.file.escape) + sizeof(int)));
 	/* intern->type = SPL_FS_INFO; done by set 0 */
 	intern->file_class = spl_ce_SplFileObject;
 	intern->info_class = spl_ce_SplFileInfo;
@@ -1474,13 +1477,18 @@ PHP_METHOD(RecursiveDirectoryIterator, hasChildren)
 		if (spl_filesystem_object_get_file_name(intern) != SUCCESS) {
 			RETURN_THROWS();
 		}
-		if (!allow_links && !(intern->flags & SPL_FILE_DIR_FOLLOW_SYMLINKS)) {
-			php_stat(intern->file_name, FS_IS_LINK, return_value);
-			if (zend_is_true(return_value)) {
+		php_stat(intern->file_name, FS_LPERMS, return_value);
+		if (Z_TYPE_P(return_value) == IS_FALSE) {
+			return;
+		} else if (!S_ISLNK(Z_LVAL_P(return_value))) {
+			RETURN_BOOL(S_ISDIR(Z_LVAL_P(return_value)));
+		} else {
+			if (!allow_links
+			 && !(intern->flags & SPL_FILE_DIR_FOLLOW_SYMLINKS)) {
 				RETURN_FALSE;
 			}
+			php_stat(intern->file_name, FS_IS_DIR, return_value);
 		}
-		php_stat(intern->file_name, FS_IS_DIR, return_value);
     }
 }
 /* }}} */
