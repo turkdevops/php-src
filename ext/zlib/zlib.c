@@ -231,6 +231,7 @@ static int php_zlib_output_handler_ex(php_zlib_context *ctx, php_output_context 
 					deflateEnd(&ctx->Z);
 					return FAILURE;
 				}
+				ZEND_FALLTHROUGH;
 			case Z_STREAM_END:
 				if (ctx->Z.avail_in) {
 					memmove(ctx->buffer.data, ctx->buffer.data + ctx->buffer.used - ctx->Z.avail_in, ctx->Z.avail_in);
@@ -366,7 +367,7 @@ static void php_zlib_output_compression_start(void)
 			break;
 		case 1:
 			ZLIBG(output_compression) = PHP_OUTPUT_HANDLER_DEFAULT_SIZE;
-			/* break omitted intentionally */
+			ZEND_FALLTHROUGH;
 		default:
 			if (	php_zlib_output_encoding() &&
 					(h = php_zlib_output_handler_init(ZEND_STRL(PHP_ZLIB_OUTPUT_HANDLER_NAME), ZLIBG(output_compression), PHP_OUTPUT_HANDLER_STDFLAGS)) &&
@@ -930,6 +931,7 @@ PHP_FUNCTION(inflate_init)
 				php_error_docref(NULL, E_WARNING, "Dictionary does not match expected dictionary (incorrect adler32 hash)");
 				efree(ctx->inflateDict);
 				ctx->inflateDict = NULL;
+				break;
 			EMPTY_SWITCH_DEFAULT_CASE()
 		}
 	}
@@ -1271,9 +1273,9 @@ static PHP_INI_MH(OnUpdate_zlib_output_compression)
 		return FAILURE;
 	}
 
-	if (!strncasecmp(ZSTR_VAL(new_value), "off", sizeof("off"))) {
+	if (zend_string_equals_literal_ci(new_value, "off")) {
 		int_value = 0;
-	} else if (!strncasecmp(ZSTR_VAL(new_value), "on", sizeof("on"))) {
+	} else if (zend_string_equals_literal_ci(new_value, "on")) {
 		int_value = 1;
 	} else {
 		int_value = zend_atoi(ZSTR_VAL(new_value), ZSTR_LEN(new_value));

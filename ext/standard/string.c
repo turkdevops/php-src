@@ -1032,17 +1032,22 @@ PHPAPI void php_explode(const zend_string *delim, zend_string *str, zval *return
 		ZVAL_STR_COPY(&tmp, str);
 		zend_hash_next_index_insert_new(Z_ARRVAL_P(return_value), &tmp);
 	} else {
-		do {
-			ZVAL_STRINGL_FAST(&tmp, p1, p2 - p1);
-			zend_hash_next_index_insert_new(Z_ARRVAL_P(return_value), &tmp);
-			p1 = p2 + ZSTR_LEN(delim);
-			p2 = php_memnstr(p1, ZSTR_VAL(delim), ZSTR_LEN(delim), endp);
-		} while (p2 != NULL && --limit > 1);
+		zend_hash_real_init_packed(Z_ARRVAL_P(return_value));
+		ZEND_HASH_FILL_PACKED(Z_ARRVAL_P(return_value)) {
+			do {
+				ZEND_HASH_FILL_GROW();
+				ZEND_HASH_FILL_SET_STR(zend_string_init_fast(p1, p2 - p1));
+				ZEND_HASH_FILL_NEXT();
+				p1 = p2 + ZSTR_LEN(delim);
+				p2 = php_memnstr(p1, ZSTR_VAL(delim), ZSTR_LEN(delim), endp);
+			} while (p2 != NULL && --limit > 1);
 
-		if (p1 <= endp) {
-			ZVAL_STRINGL(&tmp, p1, endp - p1);
-			zend_hash_next_index_insert_new(Z_ARRVAL_P(return_value), &tmp);
-		}
+			if (p1 <= endp) {
+				ZEND_HASH_FILL_GROW();
+				ZEND_HASH_FILL_SET_STR(zend_string_init_fast(p1, endp - p1));
+				ZEND_HASH_FILL_NEXT();
+			}
+		} ZEND_HASH_FILL_END();
 	}
 }
 /* }}} */
@@ -2551,7 +2556,7 @@ PHP_FUNCTION(quotemeta)
 			case '(':
 			case ')':
 				*q++ = '\\';
-				/* break is missing _intentionally_ */
+				ZEND_FALLTHROUGH;
 			default:
 				*q++ = c;
 		}
@@ -3540,7 +3545,7 @@ PHPAPI void php_stripcslashes(zend_string *str)
 						*target++=(char)strtol(numtmp, NULL, 16);
 						break;
 					}
-					/* break is left intentionally */
+					ZEND_FALLTHROUGH;
 				default:
 					i=0;
 					while (source < end && *source >= '0' && *source <= '7' && i<3) {
@@ -3807,7 +3812,7 @@ do_escape:
 			case '\"':
 			case '\\':
 				*target++ = '\\';
-				/* break is missing *intentionally* */
+				ZEND_FALLTHROUGH;
 			default:
 				*target++ = *source;
 				break;
@@ -3948,7 +3953,7 @@ do_escape:
 			case '\"':
 			case '\\':
 				*target++ = '\\';
-				/* break is missing *intentionally* */
+				ZEND_FALLTHROUGH;
 			default:
 				*target++ = *source;
 				break;
@@ -4569,7 +4574,7 @@ PHP_FUNCTION(nl2br)
 				if ((*tmp == '\r' && *(tmp+1) == '\n') || (*tmp == '\n' && *(tmp+1) == '\r')) {
 					*target++ = *tmp++;
 				}
-				/* lack of a break; is intentional */
+				ZEND_FALLTHROUGH;
 			default:
 				*target++ = *tmp;
 		}

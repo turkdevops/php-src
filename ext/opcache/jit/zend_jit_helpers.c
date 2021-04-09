@@ -390,7 +390,7 @@ static void ZEND_FASTCALL zend_jit_fetch_dim_r_helper(zend_array *ht, zval *dim,
 			goto str_index;
 		case IS_UNDEF:
 			zend_jit_undefined_op_helper(EG(current_execute_data)->opline->op2.var);
-			/* break missing intentionally */
+			ZEND_FALLTHROUGH;
 		case IS_NULL:
 			offset_key = ZSTR_EMPTY_ALLOC();
 			goto str_index;
@@ -455,7 +455,7 @@ static void ZEND_FASTCALL zend_jit_fetch_dim_is_helper(zend_array *ht, zval *dim
 			goto str_index;
 		case IS_UNDEF:
 			zend_jit_undefined_op_helper(EG(current_execute_data)->opline->op2.var);
-			/* break missing intentionally */
+			ZEND_FALLTHROUGH;
 		case IS_NULL:
 			offset_key = ZSTR_EMPTY_ALLOC();
 			goto str_index;
@@ -518,7 +518,7 @@ static int ZEND_FASTCALL zend_jit_fetch_dim_isset_helper(zend_array *ht, zval *d
 			goto str_index;
 		case IS_UNDEF:
 			zend_jit_undefined_op_helper(EG(current_execute_data)->opline->op2.var);
-			/* break missing intentionally */
+			ZEND_FALLTHROUGH;
 		case IS_NULL:
 			offset_key = ZSTR_EMPTY_ALLOC();
 			goto str_index;
@@ -585,7 +585,7 @@ static zval* ZEND_FASTCALL zend_jit_fetch_dim_rw_helper(zend_array *ht, zval *di
 			if (!zend_jit_undefined_op_helper_write(ht, EG(current_execute_data)->opline->op2.var)) {
 				return NULL;
 			}
-			/* break missing intentionally */
+			ZEND_FALLTHROUGH;
 		case IS_NULL:
 			offset_key = ZSTR_EMPTY_ALLOC();
 			goto str_index;
@@ -658,7 +658,7 @@ static zval* ZEND_FASTCALL zend_jit_fetch_dim_w_helper(zend_array *ht, zval *dim
 			if (!zend_jit_undefined_op_helper_write(ht, EG(current_execute_data)->opline->op2.var)) {
 				return NULL;
 			}
-			/* break missing intentionally */
+			ZEND_FALLTHROUGH;
 		case IS_NULL:
 			offset_key = ZSTR_EMPTY_ALLOC();
 			goto str_index;
@@ -717,6 +717,7 @@ try_again:
 		}
 		case IS_UNDEF:
 			zend_jit_undefined_op_helper(EG(current_execute_data)->opline->op2.var);
+			ZEND_FALLTHROUGH;
 		case IS_DOUBLE:
 		case IS_NULL:
 		case IS_FALSE:
@@ -1348,20 +1349,27 @@ static zend_always_inline bool zend_jit_verify_type_common(zval *arg, zend_arg_i
 			ZEND_TYPE_LIST_FOREACH(ZEND_TYPE_LIST(arg_info->type), list_type) {
 				if (*cache_slot) {
 					ce = *cache_slot;
-				} else if (ZEND_TYPE_HAS_CE_CACHE(*list_type) && ZEND_TYPE_CE_CACHE(*list_type)) {
-					ce = ZEND_TYPE_CE_CACHE(*list_type);
-					*cache_slot = ce;
 				} else {
-					ce = zend_fetch_class(ZEND_TYPE_NAME(*list_type),
-						ZEND_FETCH_CLASS_AUTO | ZEND_FETCH_CLASS_NO_AUTOLOAD | ZEND_FETCH_CLASS_SILENT);
-					if (!ce) {
-						cache_slot++;
-						continue;
+					zend_string *name = ZEND_TYPE_NAME(*list_type);
+
+					if (ZSTR_HAS_CE_CACHE(name)) {
+						ce = ZSTR_GET_CE_CACHE(name);
+						if (!ce) {
+							ce = zend_lookup_class_ex(name, NULL, ZEND_FETCH_CLASS_NO_AUTOLOAD);
+							if (!ce) {
+								cache_slot++;
+								continue;
+							}
+						}
+					} else {
+						ce = zend_fetch_class(name,
+							ZEND_FETCH_CLASS_AUTO | ZEND_FETCH_CLASS_NO_AUTOLOAD | ZEND_FETCH_CLASS_SILENT);
+						if (!ce) {
+							cache_slot++;
+							continue;
+						}
 					}
 					*cache_slot = ce;
-					if (ZEND_TYPE_HAS_CE_CACHE(*list_type)) {
-						ZEND_TYPE_SET_CE_CACHE(*list_type, ce);
-					}
 				}
 				if (instanceof_function(Z_OBJCE_P(arg), ce)) {
 					return 1;
@@ -1371,19 +1379,25 @@ static zend_always_inline bool zend_jit_verify_type_common(zval *arg, zend_arg_i
 		} else {
 			if (EXPECTED(*cache_slot)) {
 				ce = (zend_class_entry *) *cache_slot;
-			} else if (ZEND_TYPE_HAS_CE_CACHE(arg_info->type) && ZEND_TYPE_CE_CACHE(arg_info->type)) {
-				ce = ZEND_TYPE_CE_CACHE(arg_info->type);
-				*cache_slot = ce;
 			} else {
-				ce = zend_fetch_class(ZEND_TYPE_NAME(arg_info->type),
-					ZEND_FETCH_CLASS_AUTO | ZEND_FETCH_CLASS_NO_AUTOLOAD | ZEND_FETCH_CLASS_SILENT);
-				if (UNEXPECTED(!ce)) {
-					goto builtin_types;
+				zend_string *name = ZEND_TYPE_NAME(arg_info->type);
+
+				if (ZSTR_HAS_CE_CACHE(name)) {
+					ce = ZSTR_GET_CE_CACHE(name);
+					if (!ce) {
+						ce = zend_lookup_class_ex(name, NULL, ZEND_FETCH_CLASS_NO_AUTOLOAD);
+						if (UNEXPECTED(!ce)) {
+							goto builtin_types;
+						}
+					}
+				} else {
+					ce = zend_fetch_class(name,
+						ZEND_FETCH_CLASS_AUTO | ZEND_FETCH_CLASS_NO_AUTOLOAD | ZEND_FETCH_CLASS_SILENT);
+					if (UNEXPECTED(!ce)) {
+						goto builtin_types;
+					}
 				}
 				*cache_slot = (void *) ce;
-				if (ZEND_TYPE_HAS_CE_CACHE(arg_info->type)) {
-					ZEND_TYPE_SET_CE_CACHE(arg_info->type, ce);
-				}
 			}
 			if (instanceof_function(Z_OBJCE_P(arg), ce)) {
 				return 1;

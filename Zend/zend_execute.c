@@ -298,7 +298,7 @@ static zend_never_inline ZEND_COLD zval *_get_zval_cv_lookup(zval *ptr, uint32_t
 			break;
 		case BP_VAR_RW:
 			zval_undefined_cv(var EXECUTE_DATA_CC);
-			/* break missing intentionally */
+			ZEND_FALLTHROUGH;
 		case BP_VAR_W:
 			ZVAL_NULL(ptr);
 			break;
@@ -852,24 +852,25 @@ static bool zend_check_and_resolve_property_class_type(
 		zend_type *list_type;
 		ZEND_TYPE_LIST_FOREACH(ZEND_TYPE_LIST(info->type), list_type) {
 			if (ZEND_TYPE_HAS_NAME(*list_type)) {
-				if (ZEND_TYPE_HAS_CE_CACHE(*list_type)) {
-					ce = ZEND_TYPE_CE_CACHE(*list_type);
+				zend_string *name = ZEND_TYPE_NAME(*list_type);
+
+				if (ZSTR_HAS_CE_CACHE(name)) {
+					ce = ZSTR_GET_CE_CACHE(name);
 					if (!ce) {
-						zend_string *name = ZEND_TYPE_NAME(*list_type);
-						ce = resolve_single_class_type(name, info->ce);
+						ce = zend_lookup_class_ex(name, NULL, ZEND_FETCH_CLASS_NO_AUTOLOAD);
 						if (UNEXPECTED(!ce)) {
 							continue;
 						}
-						ZEND_TYPE_SET_CE_CACHE(*list_type, ce);
 					}
 				} else {
-					zend_string *name = ZEND_TYPE_NAME(*list_type);
 					ce = resolve_single_class_type(name, info->ce);
 					if (!ce) {
 						continue;
 					}
-					zend_string_release(name);
-					ZEND_TYPE_SET_CE(*list_type, ce);
+					if (!(info->ce->ce_flags & ZEND_ACC_IMMUTABLE)) {
+						zend_string_release(name);
+						ZEND_TYPE_SET_CE(*list_type, ce);
+					}
 				}
 			} else {
 				ce = ZEND_TYPE_CE(*list_type);
@@ -881,25 +882,25 @@ static bool zend_check_and_resolve_property_class_type(
 		return 0;
 	} else {
 		if (UNEXPECTED(ZEND_TYPE_HAS_NAME(info->type))) {
-			if (ZEND_TYPE_HAS_CE_CACHE(info->type)) {
-				ce = ZEND_TYPE_CE_CACHE(info->type);
+			zend_string *name = ZEND_TYPE_NAME(info->type);
+
+			if (ZSTR_HAS_CE_CACHE(name)) {
+				ce = ZSTR_GET_CE_CACHE(name);
 				if (!ce) {
-					zend_string *name = ZEND_TYPE_NAME(info->type);
-					ce = resolve_single_class_type(name, info->ce);
+					ce = zend_lookup_class_ex(name, NULL, ZEND_FETCH_CLASS_NO_AUTOLOAD);
 					if (UNEXPECTED(!ce)) {
 						return 0;
 					}
-					ZEND_TYPE_SET_CE_CACHE(info->type, ce);
 				}
 			} else {
-				zend_string *name = ZEND_TYPE_NAME(info->type);
 				ce = resolve_single_class_type(name, info->ce);
 				if (UNEXPECTED(!ce)) {
 					return 0;
 				}
-
-				zend_string_release(name);
-				ZEND_TYPE_SET_CE(info->type, ce);
+				if (!(info->ce->ce_flags & ZEND_ACC_IMMUTABLE)) {
+					zend_string_release(name);
+					ZEND_TYPE_SET_CE(info->type, ce);
+				}
 			}
 		} else {
 			ce = ZEND_TYPE_CE(info->type);
@@ -982,32 +983,39 @@ static zend_always_inline bool zend_check_type_slow(
 		bool is_return_type, bool is_internal)
 {
 	uint32_t type_mask;
-	if (ZEND_TYPE_HAS_CLASS(*type) && Z_TYPE_P(arg) == IS_OBJECT) {
+	if (ZEND_TYPE_HAS_CLASS(*type) && EXPECTED(Z_TYPE_P(arg) == IS_OBJECT)) {
 		zend_class_entry *ce;
-		if (ZEND_TYPE_HAS_LIST(*type)) {
+		if (UNEXPECTED(ZEND_TYPE_HAS_LIST(*type))) {
 			zend_type *list_type;
 			ZEND_TYPE_LIST_FOREACH(ZEND_TYPE_LIST(*type), list_type) {
 				if (HAVE_CACHE_SLOT && *cache_slot) {
 					ce = *cache_slot;
-				} else if (ZEND_TYPE_HAS_CE_CACHE(*list_type) && ZEND_TYPE_CE_CACHE(*list_type)) {
-					ce = ZEND_TYPE_CE_CACHE(*list_type);
-					if (HAVE_CACHE_SLOT) {
-						*cache_slot = ce;
-					}
 				} else {
-					ce = zend_fetch_class(ZEND_TYPE_NAME(*list_type),
-						ZEND_FETCH_CLASS_AUTO | ZEND_FETCH_CLASS_NO_AUTOLOAD | ZEND_FETCH_CLASS_SILENT);
-					if (!ce) {
-						if (HAVE_CACHE_SLOT) {
-							cache_slot++;
+					zend_string *name = ZEND_TYPE_NAME(*list_type);
+
+					if (ZSTR_HAS_CE_CACHE(name)) {
+						ce = ZSTR_GET_CE_CACHE(name);
+						if (!ce) {
+							ce = zend_lookup_class_ex(name, NULL, ZEND_FETCH_CLASS_NO_AUTOLOAD);
+							if (!ce) {
+								if (HAVE_CACHE_SLOT) {
+									cache_slot++;
+								}
+								continue;
+							}
 						}
-						continue;
+					} else {
+						ce = zend_fetch_class(name,
+							ZEND_FETCH_CLASS_AUTO | ZEND_FETCH_CLASS_NO_AUTOLOAD | ZEND_FETCH_CLASS_SILENT);
+						if (!ce) {
+							if (HAVE_CACHE_SLOT) {
+								cache_slot++;
+							}
+							continue;
+						}
 					}
 					if (HAVE_CACHE_SLOT) {
 						*cache_slot = ce;
-					}
-					if (ZEND_TYPE_HAS_CE_CACHE(*list_type)) {
-						ZEND_TYPE_SET_CE_CACHE(*list_type, ce);
 					}
 				}
 				if (instanceof_function(Z_OBJCE_P(arg), ce)) {
@@ -1020,22 +1028,26 @@ static zend_always_inline bool zend_check_type_slow(
 		} else {
 			if (EXPECTED(HAVE_CACHE_SLOT && *cache_slot)) {
 				ce = (zend_class_entry *) *cache_slot;
-			} else if (ZEND_TYPE_HAS_CE_CACHE(*type) && ZEND_TYPE_CE_CACHE(*type)) {
-				ce = ZEND_TYPE_CE_CACHE(*type);
-				if (HAVE_CACHE_SLOT) {
-					*cache_slot = ce;
-				}
 			} else {
-				ce = zend_fetch_class(ZEND_TYPE_NAME(*type),
-					ZEND_FETCH_CLASS_AUTO | ZEND_FETCH_CLASS_NO_AUTOLOAD | ZEND_FETCH_CLASS_SILENT);
-				if (UNEXPECTED(!ce)) {
-					goto builtin_types;
+				zend_string *name = ZEND_TYPE_NAME(*type);
+
+				if (ZSTR_HAS_CE_CACHE(name)) {
+					ce = ZSTR_GET_CE_CACHE(name);
+					if (!ce) {
+						ce = zend_lookup_class_ex(name, NULL, ZEND_FETCH_CLASS_NO_AUTOLOAD);
+						if (UNEXPECTED(!ce)) {
+							goto builtin_types;
+						}
+					}
+				} else {
+					ce = zend_fetch_class(name,
+						ZEND_FETCH_CLASS_AUTO | ZEND_FETCH_CLASS_NO_AUTOLOAD | ZEND_FETCH_CLASS_SILENT);
+					if (UNEXPECTED(!ce)) {
+						goto builtin_types;
+					}
 				}
 				if (HAVE_CACHE_SLOT) {
 					*cache_slot = (void *) ce;
-				}
-				if (ZEND_TYPE_HAS_CE_CACHE(*type)) {
-					ZEND_TYPE_SET_CE_CACHE(*type, ce);
 				}
 			}
 			if (instanceof_function(Z_OBJCE_P(arg), ce)) {
@@ -1418,6 +1430,7 @@ try_again:
 			}
 			case IS_UNDEF:
 				ZVAL_UNDEFINED_OP2();
+				ZEND_FALLTHROUGH;
 			case IS_DOUBLE:
 			case IS_NULL:
 			case IS_FALSE:
@@ -2081,7 +2094,7 @@ static zend_never_inline zend_uchar slow_index_convert(HashTable *ht, const zval
 			if (EG(exception)) {
 				return IS_NULL;
 			}
-			/* break missing intentionally */
+			ZEND_FALLTHROUGH;
 		}
 		case IS_NULL:
 			value->str = ZSTR_EMPTY_ALLOC();
@@ -2122,7 +2135,7 @@ num_undef:
 			switch (type) {
 				case BP_VAR_R:
 					zend_undefined_offset(hval);
-					/* break missing intentionally */
+					ZEND_FALLTHROUGH;
 				case BP_VAR_UNSET:
 				case BP_VAR_IS:
 					retval = &EG(uninitialized_zval);
@@ -2151,7 +2164,7 @@ str_index:
 				switch (type) {
 					case BP_VAR_R:
 						zend_undefined_index(offset_key);
-						/* break missing intentionally */
+						ZEND_FALLTHROUGH;
 					case BP_VAR_UNSET:
 					case BP_VAR_IS:
 						retval = &EG(uninitialized_zval);
@@ -2389,6 +2402,7 @@ try_string_offset:
 				}
 				case IS_UNDEF:
 					ZVAL_UNDEFINED_OP2();
+					ZEND_FALLTHROUGH;
 				case IS_DOUBLE:
 				case IS_NULL:
 				case IS_FALSE:

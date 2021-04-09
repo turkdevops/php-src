@@ -942,6 +942,7 @@ static const char *zend_parse_arg_impl(zval *arg, va_list *va, const char **spec
 		case 'Z': /* replace with 'z' */
 		case 'L': /* replace with 'l' */
 			ZEND_ASSERT(0 && "ZPP modifier no longer supported");
+			ZEND_FALLTHROUGH;
 		default:
 			return "unknown";
 	}
@@ -3415,8 +3416,25 @@ static zend_always_inline bool zend_is_callable_check_func(int check_flags, zval
 			scope = get_scope(frame);
 		}
 
-		cname = zend_string_init(Z_STRVAL_P(callable), clen, 0);
-		if (!zend_is_callable_check_class(cname, scope, frame, fcc, &strict_class, error)) {
+		cname = zend_string_init_interned(Z_STRVAL_P(callable), clen, 0);
+		if (ZSTR_HAS_CE_CACHE(cname) && ZSTR_GET_CE_CACHE(cname)) {
+			fcc->calling_scope = ZSTR_GET_CE_CACHE(cname);
+			if (scope && !fcc->object) {
+				zend_object *object = zend_get_this_object(frame);
+
+				if (object &&
+				    instanceof_function(object->ce, scope) &&
+				    instanceof_function(scope, fcc->calling_scope)) {
+					fcc->object = object;
+					fcc->called_scope = object->ce;
+				} else {
+					fcc->called_scope = fcc->calling_scope;
+				}
+			} else {
+				fcc->called_scope = fcc->object ? fcc->object->ce : fcc->calling_scope;
+			}
+			strict_class = 1;
+		} else if (!zend_is_callable_check_class(cname, scope, frame, fcc, &strict_class, error)) {
 			zend_string_release_ex(cname, 0);
 			return 0;
 		}
