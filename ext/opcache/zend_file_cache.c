@@ -1231,7 +1231,7 @@ static void zend_file_cache_unserialize_type(
 		UNSERIALIZE_STR(type_name);
 		ZEND_TYPE_SET_PTR(*type, type_name);
 		if (!script->corrupted) {
-			zend_accel_get_class_name_map_ptr(type_name, scope);
+			zend_accel_get_class_name_map_ptr(type_name, scope, /* have_xlat */ false);
 		}
 	} else if (ZEND_TYPE_HAS_CE(*type)) {
 		zend_class_entry *ce = ZEND_TYPE_CE(*type);
@@ -1244,15 +1244,17 @@ static void zend_file_cache_unserialize_op_array(zend_op_array           *op_arr
                                                  zend_persistent_script  *script,
                                                  void                    *buf)
 {
-	if (!(script->corrupted)
-	 && op_array != &script->script.main_op_array) {
-		op_array->fn_flags |= ZEND_ACC_IMMUTABLE;
+	if (!script->corrupted) {
+		if (op_array != &script->script.main_op_array) {
+			op_array->fn_flags |= ZEND_ACC_IMMUTABLE;
+			ZEND_MAP_PTR_NEW(op_array->run_time_cache);
+		} else {
+			ZEND_ASSERT(!(op_array->fn_flags & ZEND_ACC_IMMUTABLE));
+			ZEND_MAP_PTR_INIT(op_array->run_time_cache, NULL);
+		}
 		if (op_array->static_variables) {
 			ZEND_MAP_PTR_NEW(op_array->static_variables_ptr);
-		} else {
-			ZEND_MAP_PTR_INIT(op_array->static_variables_ptr, NULL);
 		}
-		ZEND_MAP_PTR_NEW(op_array->run_time_cache);
 	} else {
 		op_array->fn_flags &= ~ZEND_ACC_IMMUTABLE;
 		if (op_array->static_variables) {
@@ -1497,7 +1499,7 @@ static void zend_file_cache_unserialize_class(zval                    *zv,
 	UNSERIALIZE_STR(ce->name);
 	if (!(ce->ce_flags & ZEND_ACC_ANON_CLASS)
 	 && !script->corrupted) {
-		zend_accel_get_class_name_map_ptr(ce->name, ce);
+		zend_accel_get_class_name_map_ptr(ce->name, ce, /* have_xlat */ false);
 	}
 	if (ce->parent) {
 		if (!(ce->ce_flags & ZEND_ACC_LINKED)) {

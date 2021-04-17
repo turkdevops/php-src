@@ -586,7 +586,7 @@ static int zend_add_ns_func_name_literal(zend_string *name) /* {{{ */
 	zend_string *lc_name = zend_string_tolower(name);
 	zend_add_literal_string(&lc_name);
 
-	/* Lowercased unqualfied name */
+	/* Lowercased unqualified name */
 	if (zend_get_unqualified_name(name, &unqualified_name, &unqualified_name_len)) {
 		lc_name = zend_string_alloc(unqualified_name_len, 0);
 		zend_str_tolower_copy(ZSTR_VAL(lc_name), unqualified_name, unqualified_name_len);
@@ -715,7 +715,7 @@ void zend_do_free(znode *op1) /* {{{ */
 			switch (opline->opcode) {
 				case ZEND_BOOL:
 				case ZEND_BOOL_NOT:
-					/* boolean resuls don't have to be freed */
+					/* boolean results don't have to be freed */
 					return;
 				case ZEND_POST_INC_STATIC_PROP:
 				case ZEND_POST_DEC_STATIC_PROP:
@@ -3234,7 +3234,7 @@ void zend_compile_assign(znode *result, zend_ast *ast) /* {{{ */
 			if (zend_propagate_list_refs(var_ast)) {
 				if (!zend_is_variable_or_call(expr_ast)) {
 					zend_error_noreturn(E_COMPILE_ERROR,
-						"Cannot assign reference to non referencable value");
+						"Cannot assign reference to non referenceable value");
 				}
 
 				zend_compile_var(&expr_node, expr_ast, BP_VAR_W, 1);
@@ -9462,10 +9462,7 @@ void zend_compile_const_expr_class_const(zend_ast **ast_ptr) /* {{{ */
 {
 	zend_ast *ast = *ast_ptr;
 	zend_ast *class_ast = ast->child[0];
-	zend_ast *const_ast = ast->child[1];
 	zend_string *class_name;
-	zend_string *const_name = zend_ast_get_str(const_ast);
-	zend_string *name;
 	int fetch_type;
 
 	if (class_ast->kind != ZEND_AST_ZVAL) {
@@ -9482,17 +9479,17 @@ void zend_compile_const_expr_class_const(zend_ast **ast_ptr) /* {{{ */
 	}
 
 	if (ZEND_FETCH_CLASS_DEFAULT == fetch_type) {
-		class_name = zend_resolve_class_name_ast(class_ast);
-	} else {
-		zend_string_addref(class_name);
+		zend_string *tmp = zend_resolve_class_name_ast(class_ast);
+
+		zend_string_release_ex(class_name, 0);
+		if (tmp != class_name) {
+			zval *zv = zend_ast_get_zval(class_ast);
+
+			ZVAL_STR(zv, tmp);
+		}
 	}
 
-	name = zend_create_member_string(class_name, const_name);
-
-	zend_ast_destroy(ast);
-	zend_string_release_ex(class_name, 0);
-
-	*ast_ptr = zend_ast_create_constant(name, fetch_type | ZEND_FETCH_CLASS_EXCEPTION);
+	ast->attr |= ZEND_FETCH_CLASS_EXCEPTION;
 }
 /* }}} */
 
