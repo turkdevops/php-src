@@ -690,7 +690,7 @@ PDO_API bool pdo_get_long_param(zend_long *lval, zval *value)
 			if (IS_LONG == is_numeric_str_function(Z_STR_P(value), lval, NULL)) {
 				return true;
 			}
-			/* fallthrough */
+			ZEND_FALLTHROUGH;
 		default:
 			zend_type_error("Attribute value must be of type int for selected attribute, %s given", zend_zval_type_name(value));
 			return false;
@@ -1357,6 +1357,7 @@ void pdo_dbh_init(void)
 	REGISTER_PDO_CLASS_CONST_LONG("PARAM_EVT_FETCH_POST",	(zend_long)PDO_PARAM_EVT_FETCH_POST);
 	REGISTER_PDO_CLASS_CONST_LONG("PARAM_EVT_NORMALIZE",	(zend_long)PDO_PARAM_EVT_NORMALIZE);
 
+	REGISTER_PDO_CLASS_CONST_LONG("FETCH_DEFAULT", (zend_long)PDO_FETCH_USE_DEFAULT);
 	REGISTER_PDO_CLASS_CONST_LONG("FETCH_LAZY", (zend_long)PDO_FETCH_LAZY);
 	REGISTER_PDO_CLASS_CONST_LONG("FETCH_ASSOC", (zend_long)PDO_FETCH_ASSOC);
 	REGISTER_PDO_CLASS_CONST_LONG("FETCH_NUM",  (zend_long)PDO_FETCH_NUM);

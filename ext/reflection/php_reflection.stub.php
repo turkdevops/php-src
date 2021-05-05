@@ -21,7 +21,7 @@ abstract class ReflectionFunctionAbstract implements Reflector
     public string $name;
 
     /** @implementation-alias ReflectionClass::__clone */
-    final private function __clone(): void {}
+    private function __clone(): void {}
 
     /** @return bool */
     public function inNamespace() {}
@@ -205,7 +205,7 @@ class ReflectionClass implements Reflector
 {
     public string $name;
 
-    final private function __clone(): void {}
+    private function __clone(): void {}
 
     public function __construct(object|string $objectOrClass) {}
 
@@ -381,7 +381,7 @@ class ReflectionProperty implements Reflector
     public string $class;
 
     /** @implementation-alias ReflectionClass::__clone */
-    final private function __clone(): void {}
+    private function __clone(): void {}
 
     public function __construct(object|string $class, string $property) {}
 
@@ -449,7 +449,7 @@ class ReflectionClassConstant implements Reflector
     public string $class;
 
     /** @implementation-alias ReflectionClass::__clone */
-    final private function __clone(): void {}
+    private function __clone(): void {}
 
     public function __construct(object|string $class, string $constant) {}
 
@@ -490,7 +490,7 @@ class ReflectionParameter implements Reflector
     public string $name;
 
     /** @implementation-alias ReflectionClass::__clone */
-    final private function __clone(): void {}
+    private function __clone(): void {}
 
     /** @param string|array|object $function */
     public function __construct($function, int|string $param) {}
@@ -569,7 +569,7 @@ class ReflectionParameter implements Reflector
 abstract class ReflectionType implements Stringable
 {
     /** @implementation-alias ReflectionClass::__clone */
-    final private function __clone(): void {}
+    private function __clone(): void {}
 
     /** @return bool */
     public function allowsNull() {}
@@ -596,7 +596,7 @@ class ReflectionExtension implements Reflector
     public string $name;
 
     /** @implementation-alias ReflectionClass::__clone */
-    final private function __clone(): void {}
+    private function __clone(): void {}
 
     public function __construct(string $name) {}
 
@@ -641,7 +641,7 @@ class ReflectionZendExtension implements Reflector
     public string $name;
 
     /** @implementation-alias ReflectionClass::__clone */
-    final private function __clone(): void {}
+    private function __clone(): void {}
 
     public function __construct(string $name) {}
 
@@ -719,4 +719,19 @@ final class ReflectionEnumBackedCase extends ReflectionEnumUnitCase
     public function __construct(object|string $class, string $constant) {}
 
     public function getBackingValue(): int|string {}
+}
+
+final class ReflectionFiber
+{
+    public function __construct(Fiber $fiber) {}
+
+    public function getFiber(): Fiber {}
+
+    public function getExecutingFile(): string {}
+
+    public function getExecutingLine(): int {}
+
+    public function getCallable(): callable {}
+
+    public function getTrace(int $options = DEBUG_BACKTRACE_PROVIDE_OBJECT): array {}
 }

@@ -16,7 +16,6 @@
    +----------------------------------------------------------------------+
 */
 
-#include "php.h"
 #include "zend_compile.h"
 #include "zend_cfg.h"
 #include "zend_ssa.h"
@@ -470,6 +469,9 @@ ZEND_API void zend_dump_op(const zend_op_array *op_array, const zend_basic_block
 				break;
 			case IS_VOID:
 				fprintf(stderr, " (void)");
+				break;
+			case IS_NEVER:
+				fprintf(stderr, " (never)");
 				break;
 			default:
 				fprintf(stderr, " (\?\?\?)");

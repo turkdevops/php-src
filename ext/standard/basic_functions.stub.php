@@ -538,7 +538,7 @@ function get_html_translation_table(int $table = HTML_SPECIALCHARS, int $flags =
 
 function assert(mixed $assertion, Throwable|string|null $description = null): bool {}
 
-function assert_options(int $option, mixed $value = UNKNOWN): array|object|int|string|null {}
+function assert_options(int $option, mixed $value = UNKNOWN): mixed {}
 
 /* string.c */
 
@@ -1209,7 +1209,7 @@ function soundex(string $string): string {}
 
 /* streamsfuncs.c */
 
-function stream_select(?array &$read, ?array &$write, ?array &$except, ?int $seconds, int $microseconds = 0): int|false {}
+function stream_select(?array &$read, ?array &$write, ?array &$except, ?int $seconds, ?int $microseconds = null): int|false {}
 
 /** @return resource */
 function stream_context_create(?array $options = null, ?array $params = null) {}

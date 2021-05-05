@@ -34,6 +34,7 @@
 #include "zend_cpuinfo.h"
 #include "zend_attributes.h"
 #include "zend_observer.h"
+#include "zend_fibers.h"
 #include "Optimizer/zend_optimizer.h"
 
 static size_t global_map_ptr_last = 0;
@@ -77,7 +78,7 @@ ZEND_API FILE *(*zend_fopen)(zend_string *filename, zend_string **opened_path);
 ZEND_API zend_result (*zend_stream_open_function)(zend_file_handle *handle);
 ZEND_API void (*zend_ticks_function)(int ticks);
 ZEND_API void (*zend_interrupt_function)(zend_execute_data *execute_data);
-ZEND_API void (*zend_error_cb)(int type, const char *error_filename, const uint32_t error_lineno, zend_string *message);
+ZEND_API void (*zend_error_cb)(int type, zend_string *error_filename, const uint32_t error_lineno, zend_string *message);
 void (*zend_printf_to_smart_string)(smart_string *buf, const char *format, va_list ap);
 void (*zend_printf_to_smart_str)(smart_str *buf, const char *format, va_list ap);
 ZEND_API char *(*zend_getenv)(const char *name, size_t name_len);
@@ -174,6 +175,17 @@ static ZEND_INI_MH(OnSetExceptionStringParamMaxLen) /* {{{ */
 }
 /* }}} */
 
+static ZEND_INI_MH(OnUpdateFiberStackSize) /* {{{ */
+{
+	if (new_value) {
+		EG(fiber_stack_size) = zend_atol(ZSTR_VAL(new_value), ZSTR_LEN(new_value));
+	} else {
+		EG(fiber_stack_size) = ZEND_FIBER_DEFAULT_C_STACK_SIZE;
+	}
+	return SUCCESS;
+}
+/* }}} */
+
 #if ZEND_DEBUG
 # define SIGNAL_CHECK_DEFAULT "1"
 #else
@@ -192,6 +204,8 @@ ZEND_INI_BEGIN()
 #endif
 	STD_ZEND_INI_BOOLEAN("zend.exception_ignore_args",	"0",	ZEND_INI_ALL,		OnUpdateBool, exception_ignore_args, zend_executor_globals, executor_globals)
 	STD_ZEND_INI_ENTRY("zend.exception_string_param_max_len",	"15",	ZEND_INI_ALL,	OnSetExceptionStringParamMaxLen,	exception_string_param_max_len,		zend_executor_globals,	executor_globals)
+	STD_ZEND_INI_ENTRY("fiber.stack_size",		NULL,			ZEND_INI_ALL,		OnUpdateFiberStackSize,		fiber_stack_size,	zend_executor_globals, 		executor_globals)
+
 ZEND_INI_END()
 
 ZEND_API size_t zend_vspprintf(char **pbuf, size_t max_len, const char *format, va_list ap) /* {{{ */
@@ -489,7 +503,7 @@ static void zend_print_zval_r_to_buf(smart_str *buf, zval *expr, int indent) /* 
 					}
 					smart_str_appendc(buf, '\n');
 				}
-				
+
 				if (GC_IS_RECURSIVE(Z_OBJ_P(expr))) {
 					smart_str_appends(buf, " *RECURSION*");
 					return;
@@ -716,7 +730,8 @@ static void compiler_globals_dtor(zend_compiler_globals *compiler_globals) /* {{
 		free(compiler_globals->function_table);
 	}
 	if (compiler_globals->class_table != GLOBAL_CLASS_TABLE) {
-		zend_hash_destroy(compiler_globals->class_table);
+		/* Child classes may reuse structures from parent classes, so destroy in reverse order. */
+		zend_hash_graceful_reverse_destroy(compiler_globals->class_table);
 		free(compiler_globals->class_table);
 	}
 	if (compiler_globals->auto_globals != GLOBAL_AUTO_GLOBALS_TABLE) {
@@ -759,10 +774,15 @@ static void executor_globals_ctor(zend_executor_globals *executor_globals) /* {{
 	executor_globals->exception_class = NULL;
 	executor_globals->exception = NULL;
 	executor_globals->objects_store.object_buckets = NULL;
+	executor_globals->current_fiber = NULL;
+	executor_globals->fiber_error = NULL;
 #ifdef ZEND_WIN32
 	zend_get_windows_version_info(&executor_globals->windows_version_info);
 #endif
 	executor_globals->flags = EG_FLAGS_INITIAL;
+	executor_globals->record_errors = false;
+	executor_globals->num_errors = 0;
+	executor_globals->errors = NULL;
 }
 /* }}} */
 
@@ -1108,7 +1128,8 @@ void zend_shutdown(void) /* {{{ */
 	virtual_cwd_shutdown();
 
 	zend_hash_destroy(GLOBAL_FUNCTION_TABLE);
-	zend_hash_destroy(GLOBAL_CLASS_TABLE);
+	/* Child classes may reuse structures from parent classes, so destroy in reverse order. */
+	zend_hash_graceful_reverse_destroy(GLOBAL_CLASS_TABLE);
 
 	zend_hash_destroy(GLOBAL_AUTO_GLOBALS_TABLE);
 	free(GLOBAL_AUTO_GLOBALS_TABLE);
@@ -1315,8 +1336,8 @@ ZEND_API zval *zend_get_configuration_directive(zend_string *name) /* {{{ */
 		} \
 	} while (0)
 
-static ZEND_COLD void zend_error_impl(
-		int orig_type, const char *error_filename, uint32_t error_lineno, zend_string *message)
+ZEND_API ZEND_COLD void zend_error_zstr_at(
+		int orig_type, zend_string *error_filename, uint32_t error_lineno, zend_string *message)
 {
 	zval params[4];
 	zval retval;
@@ -1327,12 +1348,31 @@ static ZEND_COLD void zend_error_impl(
 	zend_stack delayed_oplines_stack;
 	int type = orig_type & E_ALL;
 
+	/* Fatal errors must be handled in {main} */
+	if (type & E_FATAL_ERRORS && EG(current_fiber)) {
+		zend_error_suspend_fiber(orig_type, error_filename, error_lineno, message);
+	}
+
 	/* If we're executing a function during SCCP, count any warnings that may be emitted,
 	 * but don't perform any other error handling. */
 	if (EG(capture_warnings_during_sccp)) {
 		ZEND_ASSERT(!(type & E_FATAL_ERRORS) && "Fatal error during SCCP");
 		EG(capture_warnings_during_sccp)++;
 		return;
+	}
+
+	if (EG(record_errors)) {
+		zend_error_info *info = emalloc(sizeof(zend_error_info));
+		info->type = type;
+		info->lineno = error_lineno;
+		info->filename = zend_string_copy(error_filename);
+		info->message = zend_string_copy(message);
+
+		/* This is very inefficient for a large number of errors.
+		 * Use pow2 realloc if it becomes a problem. */
+		EG(num_errors)++;
+		EG(errors) = erealloc(EG(errors), sizeof(zend_error_info) * EG(num_errors));
+		EG(errors)[EG(num_errors)-1] = info;
 	}
 
 	/* Report about uncaught exception in case of fatal errors */
@@ -1381,7 +1421,7 @@ static ZEND_COLD void zend_error_impl(
 			ZVAL_LONG(&params[0], type);
 
 			if (error_filename) {
-				ZVAL_STRING(&params[2], error_filename);
+				ZVAL_STR_COPY(&params[2], error_filename);
 			} else {
 				ZVAL_NULL(&params[2]);
 			}
@@ -1449,15 +1489,15 @@ static ZEND_COLD void zend_error_impl(
 /* }}} */
 
 static ZEND_COLD void zend_error_va_list(
-		int orig_type, const char *error_filename, uint32_t error_lineno,
+		int orig_type, zend_string *error_filename, uint32_t error_lineno,
 		const char *format, va_list args)
 {
 	zend_string *message = zend_vstrpprintf(0, format, args);
-	zend_error_impl(orig_type, error_filename, error_lineno, message);
+	zend_error_zstr_at(orig_type, error_filename, error_lineno, message);
 	zend_string_release(message);
 }
 
-static ZEND_COLD void get_filename_lineno(int type, const char **filename, uint32_t *lineno) {
+static ZEND_COLD void get_filename_lineno(int type, zend_string **filename, uint32_t *lineno) {
 	/* Obtain relevant filename and lineno */
 	switch (type) {
 		case E_CORE_ERROR:
@@ -1479,16 +1519,11 @@ static ZEND_COLD void get_filename_lineno(int type, const char **filename, uint3
 		case E_USER_DEPRECATED:
 		case E_RECOVERABLE_ERROR:
 			if (zend_is_compiling()) {
-				*filename = ZSTR_VAL(zend_get_compiled_filename());
+				*filename = zend_get_compiled_filename();
 				*lineno = zend_get_compiled_lineno();
 			} else if (zend_is_executing()) {
-				*filename = zend_get_executed_filename();
-				if ((*filename)[0] == '[') { /* [no active file] */
-					*filename = NULL;
-					*lineno = 0;
-				} else {
-					*lineno = zend_get_executed_lineno();
-				}
+				*filename = zend_get_executed_filename_ex();
+				*lineno = zend_get_executed_lineno();
 			} else {
 				*filename = NULL;
 				*lineno = 0;
@@ -1500,12 +1535,12 @@ static ZEND_COLD void get_filename_lineno(int type, const char **filename, uint3
 			break;
 	}
 	if (!*filename) {
-		*filename = "Unknown";
+		*filename = ZSTR_KNOWN(ZEND_STR_UNKNOWN_CAPITALIZED);
 	}
 }
 
 ZEND_API ZEND_COLD void zend_error_at(
-		int type, const char *filename, uint32_t lineno, const char *format, ...) {
+		int type, zend_string *filename, uint32_t lineno, const char *format, ...) {
 	va_list args;
 
 	if (!filename) {
@@ -1519,7 +1554,18 @@ ZEND_API ZEND_COLD void zend_error_at(
 }
 
 ZEND_API ZEND_COLD void zend_error(int type, const char *format, ...) {
-	const char *filename;
+	zend_string *filename;
+	uint32_t lineno;
+	va_list args;
+
+	get_filename_lineno(type, &filename, &lineno);
+	va_start(args, format);
+	zend_error_va_list(type, filename, lineno, format, args);
+	va_end(args);
+}
+
+ZEND_API ZEND_COLD void zend_error_unchecked(int type, const char *format, ...) {
+	zend_string *filename;
 	uint32_t lineno;
 	va_list args;
 
@@ -1530,7 +1576,7 @@ ZEND_API ZEND_COLD void zend_error(int type, const char *format, ...) {
 }
 
 ZEND_API ZEND_COLD ZEND_NORETURN void zend_error_at_noreturn(
-		int type, const char *filename, uint32_t lineno, const char *format, ...)
+		int type, zend_string *filename, uint32_t lineno, const char *format, ...)
 {
 	va_list args;
 
@@ -1548,7 +1594,7 @@ ZEND_API ZEND_COLD ZEND_NORETURN void zend_error_at_noreturn(
 
 ZEND_API ZEND_COLD ZEND_NORETURN void zend_error_noreturn(int type, const char *format, ...)
 {
-	const char *filename;
+	zend_string *filename;
 	uint32_t lineno;
 	va_list args;
 
@@ -1561,10 +1607,35 @@ ZEND_API ZEND_COLD ZEND_NORETURN void zend_error_noreturn(int type, const char *
 }
 
 ZEND_API ZEND_COLD void zend_error_zstr(int type, zend_string *message) {
-	const char *filename;
+	zend_string *filename;
 	uint32_t lineno;
 	get_filename_lineno(type, &filename, &lineno);
-	zend_error_impl(type, filename, lineno, message);
+	zend_error_zstr_at(type, filename, lineno, message);
+}
+
+ZEND_API void zend_begin_record_errors(void)
+{
+	ZEND_ASSERT(!EG(record_errors) && "Error recoreding already enabled");
+	EG(record_errors) = true;
+	EG(num_errors) = 0;
+	EG(errors) = NULL;
+}
+
+ZEND_API void zend_free_recorded_errors(void)
+{
+	if (!EG(num_errors)) {
+		return;
+	}
+
+	for (uint32_t i = 0; i < EG(num_errors); i++) {
+		zend_error_info *info = EG(errors)[i];
+		zend_string_release(info->filename);
+		zend_string_release(info->message);
+		efree(info);
+	}
+	efree(EG(errors));
+	EG(errors) = NULL;
+	EG(num_errors) = 0;
 }
 
 ZEND_API ZEND_COLD void zend_throw_error(zend_class_entry *exception_ce, const char *format, ...) /* {{{ */

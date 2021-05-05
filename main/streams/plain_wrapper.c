@@ -58,6 +58,9 @@ extern int php_get_gid_by_name(const char *name, gid_t *gid);
 #define fdatasync fsync
 #else
 # define PLAIN_WRAP_BUF_SIZE(st) (st)
+# if !defined(HAVE_FDATASYNC)
+#  define fdatasync fsync
+# endif
 #endif
 
 /* parse standard "fopen" modes into open() flags */
@@ -918,6 +921,8 @@ static int php_stdiop_set_option(php_stream *stream, int option, int value, void
 				case PHP_STREAM_SYNC_FDSYNC:
 					return php_stdiop_sync(stream, 1) == 0 ? PHP_STREAM_OPTION_RETURN_OK : PHP_STREAM_OPTION_RETURN_ERR;
 			}
+			/* Invalid option passed */
+			return PHP_STREAM_OPTION_RETURN_ERR;
 
 		case PHP_STREAM_OPTION_TRUNCATE_API:
 			switch (value) {
@@ -1060,7 +1065,7 @@ static php_stream *php_plain_files_dir_opener(php_stream_wrapper *wrapper, const
 
 #ifdef PHP_WIN32
 	if (!dir) {
-		php_win32_docref2_from_error(GetLastError(), path, path);
+		php_win32_docref1_from_error(GetLastError(), path);
 	}
 
 	if (dir && dir->finished) {

@@ -29,7 +29,7 @@ if test "$PHP_OPCACHE" != "no"; then
 
   if test "$PHP_OPCACHE_JIT" = "yes"; then
     case $host_cpu in
-      i[34567]86*|x86*)
+      i[[34567]]86*|x86*)
         ;;
       *)
         AC_MSG_WARN([JIT not supported by host architecture])
@@ -52,7 +52,7 @@ if test "$PHP_OPCACHE" != "no"; then
         DASM_FLAGS="-D X64=1"
         DASM_ARCH="x86"
         ;;
-      i[34567]86*)
+      i[[34567]]86*)
         DASM_ARCH="x86"
         ;;
       x86*)
@@ -326,7 +326,7 @@ int main() {
 	shared_alloc_mmap.c \
 	shared_alloc_posix.c \
 	$ZEND_JIT_SRC,
-	shared,,-DZEND_ENABLE_STATIC_TSRMLS_CACHE=1,,yes)
+	shared,,"-Wno-implicit-fallthrough -DZEND_ENABLE_STATIC_TSRMLS_CACHE=1",,yes)
 
   PHP_ADD_EXTENSION_DEP(opcache, pcre)
 
