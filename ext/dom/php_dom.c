@@ -5,7 +5,7 @@
    | This source file is subject to version 3.01 of the PHP license,      |
    | that is bundled with this package in the file LICENSE, and is        |
    | available through the world-wide-web at the following url:           |
-   | http://www.php.net/license/3_01.txt                                  |
+   | https://www.php.net/license/3_01.txt                                 |
    | If you did not receive a copy of the PHP license and are unable to   |
    | obtain it through the world-wide-web, please send a note to          |
    | license@php.net so we can mail you a copy immediately.               |
@@ -421,7 +421,7 @@ static HashTable* dom_get_debug_info_helper(zend_object *object, int *is_temp) /
 			zend_string_addref(object_str);
 		}
 
-		zend_hash_add(debug_info, string_key, &value);
+		zend_hash_update(debug_info, string_key, &value);
 	} ZEND_HASH_FOREACH_END();
 
 	zend_string_release_ex(object_str, 0);

@@ -9,6 +9,8 @@ PHP                                                                        NEWS
     function). (Nikita)
   . Fixed bug #53826 (__callStatic fired in base class through a parent call if
     the method is private). (Nikita)
+  . Implemented FR #77372 (Relative file path is removed from uploaded file).
+    (Björn Tantau)
 
 - Date:
   . Fixed bug #52480 (Incorrect difference using DateInterval) (Derick)
@@ -52,9 +54,10 @@ PHP                                                                        NEWS
   . Enable process renaming on macOS. (devnexen)
   . Added pm.max_spawn_rate option to configure max spawn child processes rate.
     (Paulius Sapragonas)
+  . Fixed bug #65800 (Events port mechanism). (psumbera)
 
 - FTP:
-  . Convert resource<ftp> to object \FTPConnection. (Sara)
+  . Convert resource<ftp> to object \FTP\Connection. (Sara)
 
 - GD:
   . Convert resource<gd font> to object \GdFont. (Sara)
@@ -64,9 +67,9 @@ PHP                                                                        NEWS
   . Implemented FR #73385 (Add xxHash support). (Anatol)
 
 - LDAP:
-  . Convert resource<ldap link> to object \LDAP. (Máté)
-  . Convert resource<ldap result> to object \LDAPResult. (Máté)
-  . Convert resource<ldap result entry> to object \LDAPResultEntry. (Máté)
+  . Convert resource<ldap link> to object \LDAP\Connection. (Máté)
+  . Convert resource<ldap result> to object \LDAP\Result. (Máté)
+  . Convert resource<ldap result entry> to object \LDAP\ResultEntry. (Máté)
 
 - MySQLi:
   . Fixed bug #70372 (Emulate mysqli_fetch_all() for libmysqlclient). (Nikita)
@@ -89,14 +92,30 @@ PHP                                                                        NEWS
     fetching a BLOB). (Nikita)
 
 . PDO MySQL:
-  . Fixed bug#80908 (PDO::lastInsertId() return wrong). (matt)
+  . Fixed bug #80908 (PDO::lastInsertId() return wrong). (matt)
+  . Fixed bug #81037 (PDO discards error message text from prepared
+    statement). (Kamil Tekiela)
+
+. PDO ODBC:
+  . Implement PDO_ATTR_SERVER_VERSION and PDO_ATTR_SERVER_INFO for
+    PDO::getAttribute(). (Calvin Buckley)
 
 . PDO SQLite:
   . Fixed bug #38334 (Proper data-type support for PDO_SQLITE). (Nikita)
 
+- PgSQL:
+  . Convert resource<pgsql link> to object \PgSql\Connection. (Máté)
+  . Convert resource<pgsql result> to object \PgSql\Result. (Máté)
+  . Convert resource<pgsql large object> to object \PgSql\Lob. (Máté)
+
 - PSpell:
-  . Convert resource<pspell> to object \PSpell. (Sara)
-  . Convert resource<pspell config> to object \PSpellConfig. (Sara)
+  . Convert resource<pspell> to object \PSpell\Dictionary. (Sara)
+  . Convert resource<pspell config> to object \PSpell\Config. (Sara)
+
+- Sodium:
+  . Added the XChaCha20 stream cipher functions. (P.I.E. Security Team)
+  . Added the Ristretto255 functions, which are available in libsodium 1.0.18.
+    (P.I.E. Security Team)
 
 - SPL:
   . Fixed bug #80724 (FilesystemIterator::FOLLOW_SYMLINKS remove KEY_AS_FILE

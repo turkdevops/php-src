@@ -98,6 +98,10 @@ abstract class ReflectionFunctionAbstract implements Reflector
     /** @return ReflectionType|null */
     public function getReturnType() {}
 
+    public function hasTentativeReturnType(): bool {}
+
+    public function getTentativeReturnType(): ?ReflectionType {}
+
     /** @return ReflectionAttribute[] */
     public function getAttributes(?string $name = null, int $flags = 0): array {}
 }
@@ -455,7 +459,7 @@ class ReflectionClassConstant implements Reflector
 
     public function __toString(): string {}
 
-    /** @return string|false */
+    /** @return string */
     public function getName() {}
 
     /** @return mixed */

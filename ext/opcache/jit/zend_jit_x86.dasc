@@ -7,7 +7,7 @@
  *  | This source file is subject to version 3.01 of the PHP license,      |
  *  | that is bundled with this package in the file LICENSE, and is        |
  *  | available through the world-wide-web at the following url:           |
- *  | http://www.php.net/license/3_01.txt                                  |
+ *  | https://www.php.net/license/3_01.txt                                 |
  *  | If you did not receive a copy of the PHP license and are unable to   |
  *  | obtain it through the world-wide-web, please send a note to          |
  *  | license@php.net so we can mail you a copy immediately.               |
@@ -1701,50 +1701,6 @@ static int zend_jit_reuse_ip(dasm_State **Dst)
 static void zend_jit_stop_reuse_ip(void)
 {
 	reuse_ip = 0;
-}
-
-/* bit helpers */
-
-/* from http://aggregate.org/MAGIC/ */
-static uint32_t ones32(uint32_t x)
-{
-	x -= ((x >> 1) & 0x55555555);
-	x = (((x >> 2) & 0x33333333) + (x & 0x33333333));
-	x = (((x >> 4) + x) & 0x0f0f0f0f);
-	x += (x >> 8);
-	x += (x >> 16);
-	return x & 0x0000003f;
-}
-
-static uint32_t floor_log2(uint32_t x)
-{
-	ZEND_ASSERT(x != 0);
-	x |= (x >> 1);
-	x |= (x >> 2);
-	x |= (x >> 4);
-	x |= (x >> 8);
-	x |= (x >> 16);
-	return ones32(x) - 1;
-}
-
-static bool is_power_of_two(uint32_t x)
-{
-	return !(x & (x - 1)) && x != 0;
-}
-
-static bool has_concrete_type(uint32_t value_type)
-{
-	return is_power_of_two (value_type & (MAY_BE_ANY|MAY_BE_UNDEF));
-}
-
-static uint32_t concrete_type(uint32_t value_type)
-{
-	return floor_log2(value_type & (MAY_BE_ANY|MAY_BE_UNDEF));
-}
-
-static inline bool is_signed(double d)
-{
-	return (((unsigned char*)&d)[sizeof(double)-1] & 0x80) != 0;
 }
 
 static int zend_jit_interrupt_handler_stub(dasm_State **Dst)
@@ -4233,7 +4189,7 @@ static int zend_jit_math_long_long(dasm_State    **Dst,
 		} else {
 			result_reg = Z_REG(res_addr);
 		}
-	} else if (Z_MODE(op1_addr) == IS_REG && Z_LAST_USE(op1_addr)) {
+	} else if (Z_MODE(op1_addr) == IS_REG && Z_LAST_USE(op1_addr) && !may_overflow) {
 		result_reg = Z_REG(op1_addr);
 	} else if (Z_REG(res_addr) != ZREG_R0) {
 		result_reg = ZREG_R0;
@@ -4244,32 +4200,42 @@ static int zend_jit_math_long_long(dasm_State    **Dst,
 	}
 
 	if (opcode == ZEND_MUL &&
-		Z_MODE(op2_addr) == IS_CONST_ZVAL &&
-		IS_SIGNED_32BIT(Z_LVAL_P(Z_ZV(op2_addr))) &&
-		is_power_of_two(Z_LVAL_P(Z_ZV(op2_addr)))) {
-
-		if (Z_MODE(op1_addr) == IS_REG && Z_LVAL_P(Z_ZV(op2_addr)) == 2) {
+			Z_MODE(op2_addr) == IS_CONST_ZVAL &&
+			Z_LVAL_P(Z_ZV(op2_addr)) == 2) {
+		if (Z_MODE(op1_addr) == IS_REG && !may_overflow) {
 			|	lea Ra(result_reg), [Ra(Z_REG(op1_addr))+Ra(Z_REG(op1_addr))]
 		} else {
 			|	GET_ZVAL_LVAL result_reg, op1_addr
-			|	shl Ra(result_reg), floor_log2(Z_LVAL_P(Z_ZV(op2_addr)))
+			|	add Ra(result_reg), Ra(result_reg)
 		}
 	} else if (opcode == ZEND_MUL &&
-		Z_MODE(op1_addr) == IS_CONST_ZVAL &&
-		IS_SIGNED_32BIT(Z_LVAL_P(Z_ZV(op1_addr))) &&
-		is_power_of_two(Z_LVAL_P(Z_ZV(op1_addr)))) {
-
-		if (Z_MODE(op2_addr) == IS_REG && Z_LVAL_P(Z_ZV(op1_addr)) == 2) {
+			Z_MODE(op2_addr) == IS_CONST_ZVAL &&
+			!may_overflow &&
+			Z_LVAL_P(Z_ZV(op2_addr)) > 0 &&
+			zend_long_is_power_of_two(Z_LVAL_P(Z_ZV(op2_addr)))) {
+		|	GET_ZVAL_LVAL result_reg, op1_addr
+		|	shl Ra(result_reg), zend_long_floor_log2(Z_LVAL_P(Z_ZV(op2_addr)))
+	} else if (opcode == ZEND_MUL &&
+			Z_MODE(op1_addr) == IS_CONST_ZVAL &&
+			Z_LVAL_P(Z_ZV(op1_addr)) == 2) {
+		if (Z_MODE(op2_addr) == IS_REG && !may_overflow) {
 			|	lea Ra(result_reg), [Ra(Z_REG(op2_addr))+Ra(Z_REG(op2_addr))]
 		} else {
 			|	GET_ZVAL_LVAL result_reg, op2_addr
-			|	shl Ra(result_reg), floor_log2(Z_LVAL_P(Z_ZV(op1_addr)))
+			|	add Ra(result_reg), Ra(result_reg)
 		}
+	} else if (opcode == ZEND_MUL &&
+			Z_MODE(op1_addr) == IS_CONST_ZVAL &&
+			!may_overflow &&
+			Z_LVAL_P(Z_ZV(op1_addr)) > 0 &&
+			zend_long_is_power_of_two(Z_LVAL_P(Z_ZV(op1_addr)))) {
+		|	GET_ZVAL_LVAL result_reg, op2_addr
+		|	shl Ra(result_reg), zend_long_floor_log2(Z_LVAL_P(Z_ZV(op1_addr)))
 	} else if (opcode == ZEND_DIV &&
 			(Z_MODE(op2_addr) == IS_CONST_ZVAL &&
-			is_power_of_two(Z_LVAL_P(Z_ZV(op2_addr))))) {
+			zend_long_is_power_of_two(Z_LVAL_P(Z_ZV(op2_addr))))) {
 		|	GET_ZVAL_LVAL result_reg, op1_addr
-		|	shr Ra(result_reg), floor_log2(Z_LVAL_P(Z_ZV(op2_addr)))
+		|	shr Ra(result_reg), zend_long_floor_log2(Z_LVAL_P(Z_ZV(op2_addr)))
 	} else if (opcode == ZEND_ADD &&
 			!may_overflow &&
 			Z_MODE(op1_addr) == IS_REG &&
@@ -7996,7 +7962,7 @@ static int zend_jit_identical(dasm_State    **Dst,
 		}
 		return 1;
 	}
-	
+
 	if (opline->op1_type & (IS_CV|IS_VAR)) {
 		|	ZVAL_DEREF FCARG1a, op1_info
 	}
@@ -8790,7 +8756,7 @@ static int zend_jit_push_call_frame(dasm_State **Dst, const zend_op *opline, con
 			|	sub edx, dword [r0 + offsetof(zend_closure, func.op_array.last_var)]
 			|	sub edx, dword [r0 + offsetof(zend_closure, func.op_array.T)]
 		}
-		|	shl edx, 5
+		|	shl edx, 4
 		|.if X64
 			|	movsxd r2, edx
 		|.endif
@@ -15389,7 +15355,10 @@ static bool zend_jit_opline_supports_reg(const zend_op_array *op_array, zend_ssa
 		case ZEND_POST_INC:
 		case ZEND_POST_DEC:
 			op1_info = OP1_INFO();
-			return opline->op1_type == IS_CV && !(op1_info & ((MAY_BE_ANY|MAY_BE_REF|MAY_BE_UNDEF) - MAY_BE_LONG));
+			op2_info = OP1_DEF_INFO();
+			return opline->op1_type == IS_CV
+				&& !(op1_info & ((MAY_BE_ANY|MAY_BE_REF|MAY_BE_UNDEF) - MAY_BE_LONG))
+				&& (op2_info & MAY_BE_LONG);
 		case ZEND_BOOL:
 		case ZEND_BOOL_NOT:
 		case ZEND_JMPZ:

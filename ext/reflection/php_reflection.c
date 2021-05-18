@@ -5,7 +5,7 @@
    | This source file is subject to version 3.01 of the PHP license,      |
    | that is bundled with this package in the file LICENSE, and is        |
    | available through the world-wide-web at the following url:           |
-   | http://www.php.net/license/3_01.txt                                  |
+   | https://www.php.net/license/3_01.txt                                 |
    | If you did not receive a copy of the PHP license and are unable to   |
    | obtain it through the world-wide-web, please send a note to          |
    | license@php.net so we can mail you a copy immediately.               |
@@ -191,16 +191,6 @@ static inline bool is_closure_invoke(zend_class_entry *ce, zend_string *lcname) 
 	return ce == zend_ce_closure
 		&& zend_string_equals_literal(lcname, ZEND_INVOKE_FUNC_NAME);
 }
-
-static void _default_get_name(zval *object, zval *return_value) /* {{{ */
-{
-	zval *name = reflection_prop_name(object);
-	if (Z_ISUNDEF_P(name)) {
-		RETURN_FALSE;
-	}
-	ZVAL_COPY(return_value, name);
-}
-/* }}} */
 
 static zend_function *_copy_function(zend_function *fptr) /* {{{ */
 {
@@ -859,8 +849,8 @@ static void _function_string(smart_str *str, zend_function *fptr, zend_class_ent
 	}
 	_function_parameter_string(str, fptr, ZSTR_VAL(param_indent.s));
 	smart_str_free(&param_indent);
-	if (fptr->op_array.fn_flags & ZEND_ACC_HAS_RETURN_TYPE) {
-		smart_str_append_printf(str, "  %s- Return [ ", indent);
+	if ((fptr->op_array.fn_flags & ZEND_ACC_HAS_RETURN_TYPE)) {
+		smart_str_append_printf(str, "  %s- %s [ ", indent, ZEND_ARG_TYPE_IS_TENTATIVE(&fptr->common.arg_info[-1]) ? "Tentative return" : "Return");
 		if (ZEND_TYPE_IS_SET(fptr->common.arg_info[-1].type)) {
 			zend_string *type_str = zend_type_to_string(fptr->common.arg_info[-1].type);
 			smart_str_append_printf(str, "%s ", ZSTR_VAL(type_str));
@@ -3459,7 +3449,7 @@ ZEND_METHOD(ReflectionFunctionAbstract, hasReturnType)
 
 	GET_REFLECTION_OBJECT_PTR(fptr);
 
-	RETVAL_BOOL(fptr->op_array.fn_flags & ZEND_ACC_HAS_RETURN_TYPE);
+	RETVAL_BOOL((fptr->op_array.fn_flags & ZEND_ACC_HAS_RETURN_TYPE) && !ZEND_ARG_TYPE_IS_TENTATIVE(&fptr->common.arg_info[-1]));
 }
 /* }}} */
 
@@ -3475,7 +3465,43 @@ ZEND_METHOD(ReflectionFunctionAbstract, getReturnType)
 
 	GET_REFLECTION_OBJECT_PTR(fptr);
 
-	if (!(fptr->op_array.fn_flags & ZEND_ACC_HAS_RETURN_TYPE)) {
+	if (!(fptr->op_array.fn_flags & ZEND_ACC_HAS_RETURN_TYPE) || ZEND_ARG_TYPE_IS_TENTATIVE(&fptr->common.arg_info[-1])) {
+		RETURN_NULL();
+	}
+
+	reflection_type_factory(fptr->common.arg_info[-1].type, return_value, 1);
+}
+/* }}} */
+
+/* {{{ Return whether the function has a return type */
+ZEND_METHOD(ReflectionFunctionAbstract, hasTentativeReturnType)
+{
+	reflection_object *intern;
+	zend_function *fptr;
+
+	if (zend_parse_parameters_none() == FAILURE) {
+		RETURN_THROWS();
+	}
+
+	GET_REFLECTION_OBJECT_PTR(fptr);
+
+	RETVAL_BOOL(fptr->op_array.fn_flags & ZEND_ACC_HAS_RETURN_TYPE && ZEND_ARG_TYPE_IS_TENTATIVE(&fptr->common.arg_info[-1]));
+}
+/* }}} */
+
+/* {{{ Returns the return type associated with the function */
+ZEND_METHOD(ReflectionFunctionAbstract, getTentativeReturnType)
+{
+	reflection_object *intern;
+	zend_function *fptr;
+
+	if (zend_parse_parameters_none() == FAILURE) {
+		RETURN_THROWS();
+	}
+
+	GET_REFLECTION_OBJECT_PTR(fptr);
+
+	if (!(fptr->op_array.fn_flags & ZEND_ACC_HAS_RETURN_TYPE) || !ZEND_ARG_TYPE_IS_TENTATIVE(&fptr->common.arg_info[-1])) {
 		RETURN_NULL();
 	}
 
@@ -3634,15 +3660,24 @@ ZEND_METHOD(ReflectionClassConstant, __toString)
 	reflection_object *intern;
 	zend_class_constant *ref;
 	smart_str str = {0};
-	zval name;
 
 	if (zend_parse_parameters_none() == FAILURE) {
 		RETURN_THROWS();
 	}
+
 	GET_REFLECTION_OBJECT_PTR(ref);
-	_default_get_name(ZEND_THIS, &name);
-	_class_const_string(&str, Z_STRVAL(name), ref, "");
-	zval_ptr_dtor(&name);
+
+	zval *name = reflection_prop_name(ZEND_THIS);
+	if (Z_ISUNDEF_P(name)) {
+		zend_throw_error(NULL,
+			"Typed property ReflectionClassConstant::$name "
+			"must not be accessed before initialization");
+		RETURN_THROWS();
+	}
+	ZVAL_DEREF(name);
+	ZEND_ASSERT(Z_TYPE_P(name) == IS_STRING);
+
+	_class_const_string(&str, Z_STRVAL_P(name), ref, "");
 	RETURN_STR(smart_str_extract(&str));
 }
 /* }}} */
@@ -3653,7 +3688,16 @@ ZEND_METHOD(ReflectionClassConstant, getName)
 	if (zend_parse_parameters_none() == FAILURE) {
 		RETURN_THROWS();
 	}
-	_default_get_name(ZEND_THIS, return_value);
+
+	zval *name = reflection_prop_name(ZEND_THIS);
+	if (Z_ISUNDEF_P(name)) {
+		zend_throw_error(NULL,
+			"Typed property ReflectionClassConstant::$name "
+			"must not be accessed before initialization");
+		RETURN_THROWS();
+	}
+
+	ZVAL_COPY_DEREF(return_value, name);
 }
 /* }}} */
 

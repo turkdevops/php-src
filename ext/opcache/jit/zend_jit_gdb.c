@@ -7,7 +7,7 @@
    | This source file is subject to version 3.01 of the PHP license,      |
    | that is bundled with this package in the file LICENSE, and is        |
    | available through the world-wide-web at the following url:           |
-   | http://www.php.net/license/3_01.txt                                  |
+   | https://www.php.net/license/3_01.txt                                 |
    | If you did not receive a copy of the PHP license and are unable to   |
    | obtain it through the world-wide-web, please send a note to          |
    | license@php.net so we can mail you a copy immediately.               |
@@ -20,9 +20,8 @@
    +----------------------------------------------------------------------+
 */
 
-#define HAVE_GDB
 
-#ifdef HAVE_GDB
+#define HAVE_GDB
 
 #include "zend_elf.h"
 #include "zend_gdb.h"
@@ -92,7 +91,9 @@ enum {
 	DW_REG_8, DW_REG_9, DW_REG_10, DW_REG_11,
 	DW_REG_12, DW_REG_13, DW_REG_14, DW_REG_15,
 	DW_REG_RA,
-	/* TODO: ARM supports? */
+#elif defined(__aarch64__)
+	DW_REG_SP = 31,
+	DW_REG_RA = 30,
 #else
 #error "Unsupported target architecture"
 #endif
@@ -160,6 +161,8 @@ static const zend_elf_header zend_elfhdr_template = {
 	.machine     = 3,
 #elif defined(__x86_64__)
 	.machine     = 62,
+#elif defined(__aarch64__)
+	.machine     = 183,
 #else
 # error "Unsupported target architecture"
 #endif
@@ -278,21 +281,26 @@ static void zend_gdbjit_symtab(zend_gdbjit_ctx *ctx)
 	sym->info = ELFSYM_INFO(ELFSYM_BIND_GLOBAL, ELFSYM_TYPE_FUNC);
 }
 
+typedef ZEND_SET_ALIGNED(1, uint16_t unaligned_uint16_t);
+typedef ZEND_SET_ALIGNED(1, uint32_t unaligned_uint32_t);
+typedef ZEND_SET_ALIGNED(1, uint16_t unaligned_uint16_t);
+typedef ZEND_SET_ALIGNED(1, uintptr_t unaligned_uintptr_t);
+
 #define SECTALIGN(p, a) \
 	  ((p) = (uint8_t *)(((uintptr_t)(p) + ((a)-1)) & ~(uintptr_t)((a)-1)))
 
 /* Shortcuts to generate DWARF structures. */
 #define DB(x)       (*p++ = (x))
 #define DI8(x)      (*(int8_t *)p = (x), p++)
-#define DU16(x)     (*(uint16_t *)p = (x), p += 2)
-#define DU32(x)     (*(uint32_t *)p = (x), p += 4)
-#define DADDR(x)    (*(uintptr_t *)p = (x), p += sizeof(uintptr_t))
+#define DU16(x)     (*(unaligned_uint16_t *)p = (x), p += 2)
+#define DU32(x)     (*(unaligned_uint32_t *)p = (x), p += 4)
+#define DADDR(x)    (*(unaligned_uintptr_t *)p = (x), p += sizeof(uintptr_t))
 #define DUV(x)      (ctx->p = p, zend_gdbjit_uleb128(ctx, (x)), p = ctx->p)
 #define DSV(x)      (ctx->p = p, zend_gdbjit_sleb128(ctx, (x)), p = ctx->p)
 #define DSTR(str)   (ctx->p = p, zend_gdbjit_strz(ctx, (str)), p = ctx->p)
 #define DALIGNNOP(s)    while ((uintptr_t)p & ((s)-1)) *p++ = DW_CFA_nop
 #define DSECT(name, stmt) \
-	{ uint32_t *szp_##name = (uint32_t *)p; p += 4; stmt \
+	{ unaligned_uint32_t *szp_##name = (uint32_t *)p; p += 4; stmt \
 		*szp_##name = (uint32_t)((p-(uint8_t *)szp_##name)-4); }
 
 static void zend_gdbjit_ehframe(zend_gdbjit_ctx *ctx)
@@ -327,6 +335,9 @@ static void zend_gdbjit_ehframe(zend_gdbjit_ctx *ctx)
 #elif defined(__x86_64__)
 		DB(DW_CFA_advance_loc|4);            /* sub $0x8,%rsp */
 		DB(DW_CFA_def_cfa_offset); DUV(16);  /* Aligned stack frame size. */
+#elif defined(__aarch64__)
+		DB(DW_CFA_advance_loc|1);            /* Only an approximation. */
+		DB(DW_CFA_def_cfa_offset); DUV(32);  /* Aligned stack frame size. */
 #else
 # error "Unsupported target architecture"
 #endif
@@ -491,5 +502,3 @@ static void zend_jit_gdb_init(void)
 	}
 #endif
 }
-
-#endif

@@ -5,7 +5,7 @@
    | This source file is subject to version 3.01 of the PHP license,      |
    | that is bundled with this package in the file LICENSE, and is        |
    | available through the world-wide-web at the following url:           |
-   | http://www.php.net/license/3_01.txt                                  |
+   | https://www.php.net/license/3_01.txt                                 |
    | If you did not receive a copy of the PHP license and are unable to   |
    | obtain it through the world-wide-web, please send a note to          |
    | license@php.net so we can mail you a copy immediately.               |
@@ -301,7 +301,7 @@ CWD_API char *virtual_getcwd(char *buf, size_t size) /* {{{ */
 #ifdef ZEND_WIN32
 static inline zend_ulong realpath_cache_key(const char *path, size_t path_len) /* {{{ */
 {
-	register zend_ulong h;
+	zend_ulong h;
 	size_t bucket_key_len;
 	const char *bucket_key_start = tsrm_win32_get_path_sid_key(path, path_len, &bucket_key_len);
 	const char *bucket_key = bucket_key_start;
@@ -325,7 +325,7 @@ static inline zend_ulong realpath_cache_key(const char *path, size_t path_len) /
 #else
 static inline zend_ulong realpath_cache_key(const char *path, size_t path_len) /* {{{ */
 {
-	register zend_ulong h;
+	zend_ulong h;
 	const char *e = path + path_len;
 
 	for (h = Z_UL(2166136261); path < e;) {

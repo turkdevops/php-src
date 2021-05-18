@@ -5,7 +5,7 @@
   | This source file is subject to version 3.01 of the PHP license,      |
   | that is bundled with this package in the file LICENSE, and is        |
   | available through the world-wide-web at the following url:           |
-  | http://www.php.net/license/3_01.txt                                  |
+  | https://www.php.net/license/3_01.txt                                 |
   | If you did not receive a copy of the PHP license and are unable to   |
   | obtain it through the world-wide-web, please send a note to          |
   | license@php.net so we can mail you a copy immediately.               |
@@ -315,6 +315,15 @@ static int pdo_mysql_stmt_execute(pdo_stmt_t *stmt) /* {{{ */
 	S->done = 0;
 
 	if (S->stmt) {
+		uint32_t num_bound_params =
+			stmt->bound_params ? zend_hash_num_elements(stmt->bound_params) : 0;
+		if (num_bound_params < (uint32_t) S->num_params) {
+			/* too few parameter bound */
+			PDO_DBG_ERR("too few parameters bound");
+			strcpy(stmt->error_code, "HY093");
+			PDO_DBG_RETURN(0);
+		}
+
 		PDO_DBG_RETURN(pdo_mysql_stmt_execute_prepared(stmt));
 	}
 
@@ -403,13 +412,6 @@ static int pdo_mysql_stmt_param_hook(pdo_stmt_t *stmt, struct pdo_bound_param_da
 				PDO_DBG_RETURN(1);
 
 			case PDO_PARAM_EVT_EXEC_PRE:
-				if (zend_hash_num_elements(stmt->bound_params) < (unsigned int) S->num_params) {
-					/* too few parameter bound */
-					PDO_DBG_ERR("too few parameters bound");
-					strcpy(stmt->error_code, "HY093");
-					PDO_DBG_RETURN(0);
-				}
-
 				if (!Z_ISREF(param->parameter)) {
 					parameter = &param->parameter;
 				} else {

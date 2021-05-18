@@ -2,10 +2,10 @@
    +----------------------------------------------------------------------+
    | Copyright (c) The PHP Group                                          |
    +----------------------------------------------------------------------+
-   | This source file is subject to version 3.01 of the PHP license,	  |
+   | This source file is subject to version 3.01 of the PHP license,      |
    | that is bundled with this package in the file LICENSE, and is        |
    | available through the world-wide-web at the following url:           |
-   | http://www.php.net/license/3_01.txt                                  |
+   | https://www.php.net/license/3_01.txt                                 |
    | If you did not receive a copy of the PHP license and are unable to   |
    | obtain it through the world-wide-web, please send a note to          |
    | license@php.net so we can mail you a copy immediately.               |
@@ -719,7 +719,7 @@ void phpdbg_automatic_dequeue_free(phpdbg_watch_element *element) {
 	phpdbg_free_watch_element_tree(element);
 }
 
-void phpdbg_dequeue_elements_for_recreation() {
+void phpdbg_dequeue_elements_for_recreation(void) {
 	phpdbg_watch_element *element;
 
 	ZEND_HASH_FOREACH_PTR(&PHPDBG_G(watch_recreation), element) {

@@ -5,7 +5,7 @@
    | This source file is subject to version 3.01 of the PHP license,      |
    | that is bundled with this package in the file LICENSE, and is        |
    | available through the world-wide-web at the following url:           |
-   | http://www.php.net/license/3_01.txt                                  |
+   | https://www.php.net/license/3_01.txt                                 |
    | If you did not receive a copy of the PHP license and are unable to   |
    | obtain it through the world-wide-web, please send a note to          |
    | license@php.net so we can mail you a copy immediately.               |
@@ -2447,7 +2447,7 @@ PHP_FUNCTION(extract)
 }
 /* }}} */
 
-static void php_compact_var(HashTable *eg_active_symbol_table, zval *return_value, zval *entry) /* {{{ */
+static void php_compact_var(HashTable *eg_active_symbol_table, zval *return_value, zval *entry, uint32_t pos) /* {{{ */
 {
 	zval *value_ptr, data;
 
@@ -2475,11 +2475,14 @@ static void php_compact_var(HashTable *eg_active_symbol_table, zval *return_valu
 			Z_PROTECT_RECURSION_P(entry);
 		}
 		ZEND_HASH_FOREACH_VAL(Z_ARRVAL_P(entry), value_ptr) {
-			php_compact_var(eg_active_symbol_table, return_value, value_ptr);
+			php_compact_var(eg_active_symbol_table, return_value, value_ptr, pos);
 		} ZEND_HASH_FOREACH_END();
 	    if (Z_REFCOUNTED_P(entry)) {
 			Z_UNPROTECT_RECURSION_P(entry);
 		}
+	} else {
+		php_error_docref(NULL, E_WARNING, "Argument #%d must be string or array of strings, %s given", pos, zend_zval_type_name(entry));
+		return;
 	}
 }
 /* }}} */
@@ -2512,7 +2515,7 @@ PHP_FUNCTION(compact)
 	}
 
 	for (i = 0; i < num_args; i++) {
-		php_compact_var(symbol_table, return_value, &args[i]);
+		php_compact_var(symbol_table, return_value, &args[i], i + 1);
 	}
 }
 /* }}} */

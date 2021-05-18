@@ -7,7 +7,7 @@
    | This source file is subject to version 3.01 of the PHP license,      |
    | that is bundled with this package in the file LICENSE, and is        |
    | available through the world-wide-web at the following url:           |
-   | http://www.php.net/license/3_01.txt                                  |
+   | https://www.php.net/license/3_01.txt                                 |
    | If you did not receive a copy of the PHP license and are unable to   |
    | obtain it through the world-wide-web, please send a note to          |
    | license@php.net so we can mail you a copy immediately.               |
@@ -225,6 +225,7 @@ static uint64_t zend_jit_disasm_branch_target(csh cs, const cs_insn *insn)
 {
 	unsigned int i;
 
+#if defined(__x86_64__) || defined(i386) || defined(ZEND_WIN32)
 	if (cs_insn_group(cs, insn, X86_GRP_JUMP)) {
 		for (i = 0; i < insn->detail->x86.op_count; i++) {
 			if (insn->detail->x86.operands[i].type == X86_OP_IMM) {
@@ -232,6 +233,16 @@ static uint64_t zend_jit_disasm_branch_target(csh cs, const cs_insn *insn)
 			}
 		}
 	}
+#elif defined(__aarch64__)
+	if (cs_insn_group(cs, insn, ARM64_GRP_JUMP)
+	 || insn->id == ARM64_INS_BL
+	 || insn->id == ARM64_INS_ADR) {
+		for (i = 0; i < insn->detail->arm64.op_count; i++) {
+			if (insn->detail->arm64.operands[i].type == ARM64_OP_IMM)
+				return insn->detail->arm64.operands[i].imm;
+		}
+	}
+#endif
 
 	return 0;
 }
@@ -310,7 +321,7 @@ static int zend_jit_disasm(const char    *name,
 #endif
 
 #ifdef HAVE_CAPSTONE
-# if defined(__x86_64__) || defined(_WIN64)
+# if defined(__x86_64__) || defined(_WIN64) || defined(ZEND_WIN32)
 	if (cs_open(CS_ARCH_X86, CS_MODE_64, &cs) != CS_ERR_OK)
 		return 0;
 	cs_option(cs, CS_OPT_DETAIL, CS_OPT_ON);
@@ -319,6 +330,11 @@ static int zend_jit_disasm(const char    *name,
 #  else
 	cs_option(cs, CS_OPT_SYNTAX, CS_OPT_SYNTAX_ATT);
 #  endif
+# elif defined(__aarch64__)
+	if (cs_open(CS_ARCH_ARM64, CS_MODE_ARM, &cs) != CS_ERR_OK)
+		return 0;
+	cs_option(cs, CS_OPT_DETAIL, CS_OPT_ON);
+	cs_option(cs, CS_OPT_SYNTAX, CS_OPT_SYNTAX_ATT);
 # else
 	if (cs_open(CS_ARCH_X86, CS_MODE_32, &cs) != CS_ERR_OK)
 		return 0;
@@ -431,9 +447,15 @@ static int zend_jit_disasm(const char    *name,
 		}
 
 # ifdef HAVE_CAPSTONE_ITER
+		if (JIT_G(debug) & ZEND_JIT_DEBUG_ASM_ADDR) {
+			fprintf(stderr, "    %" PRIx64 ":", insn->address);
+		}
 		fprintf(stderr, "\t%s ", insn->mnemonic);
 		p = insn->op_str;
 # else
+		if (JIT_G(debug) & ZEND_JIT_DEBUG_ASM_ADDR) {
+			fprintf(stderr, "    %" PRIx64 ":", insn[i].address);
+		}
 		fprintf(stderr, "\t%s ", insn[i].mnemonic);
 		p = insn[i].op_str;
 # endif
@@ -532,6 +554,9 @@ static int zend_jit_disasm(const char    *name,
 					}
 				}
 			}
+		}
+		if (JIT_G(debug) & ZEND_JIT_DEBUG_ASM_ADDR) {
+			fprintf(stderr, "    %" PRIx64 ":", ud_insn_off(&ud));
 		}
 		fprintf(stderr, "\t%s\n", ud_insn_asm(&ud));
 	}

@@ -5,7 +5,7 @@
   | This source file is subject to version 3.01 of the PHP license,      |
   | that is bundled with this package in the file LICENSE, and is        |
   | available through the world-wide-web at the following url:           |
-  | http://www.php.net/license/3_01.txt.                                 |
+  | https://www.php.net/license/3_01.txt                                 |
   | If you did not receive a copy of the PHP license and are unable to   |
   | obtain it through the world-wide-web, please send a note to          |
   | license@php.net so we can mail you a copy immediately.               |
@@ -2728,7 +2728,6 @@ PHP_METHOD(ZipArchive, extractTo)
 	zend_string *files_str = NULL;
 	HashTable *files_ht = NULL;
 
-	zval *zval_file = NULL;
 	php_stream_statbuf ssb;
 	char *pathto;
 	size_t pathto_len;
@@ -2765,7 +2764,8 @@ PHP_METHOD(ZipArchive, extractTo)
 			RETURN_FALSE;
 		}
 		for (i = 0; i < nelems; i++) {
-			if ((zval_file = zend_hash_index_find(files_ht, i)) != NULL) {
+			zval *zval_file;
+			if ((zval_file = zend_hash_index_find_deref(files_ht, i)) != NULL) {
 				switch (Z_TYPE_P(zval_file)) {
 					case IS_LONG:
 						break;

@@ -7,7 +7,7 @@
    | This source file is subject to version 3.01 of the PHP license,      |
    | that is bundled with this package in the file LICENSE, and is        |
    | available through the world-wide-web at the following url:           |
-   | http://www.php.net/license/3_01.txt                                  |
+   | https://www.php.net/license/3_01.txt                                 |
    | If you did not receive a copy of the PHP license and are unable to   |
    | obtain it through the world-wide-web, please send a note to          |
    | license@php.net so we can mail you a copy immediately.               |
@@ -39,7 +39,14 @@
 #include "Optimizer/zend_call_graph.h"
 #include "Optimizer/zend_dump.h"
 
+#if defined(__x86_64__) || defined(i386) || defined(ZEND_WIN32)
 #include "jit/zend_jit_x86.h"
+#elif defined (__aarch64__)
+#include "jit/zend_jit_arm64.h"
+#else
+#error "JIT not supported on this platform"
+#endif
+
 #include "jit/zend_jit_internal.h"
 
 #ifdef ZTS
@@ -116,7 +123,7 @@ static const void *zend_jit_func_trace_counter_handler = NULL;
 static const void *zend_jit_ret_trace_counter_handler = NULL;
 static const void *zend_jit_loop_trace_counter_handler = NULL;
 
-static void ZEND_FASTCALL zend_runtime_jit(void);
+static int ZEND_FASTCALL zend_runtime_jit(void);
 
 static int zend_jit_trace_op_len(const zend_op *opline);
 static int zend_jit_trace_may_exit(const zend_op_array *op_array, const zend_op *opline);
@@ -188,11 +195,6 @@ static bool zend_is_commutative(zend_uchar opcode)
 		opcode == ZEND_BW_XOR;
 }
 
-static bool zend_long_is_power_of_two(zend_long x)
-{
-	return (x > 0) && !(x & (x - 1));
-}
-
 #define OP_RANGE(ssa_op, opN) \
 	(((opline->opN##_type & (IS_TMP_VAR|IS_VAR|IS_CV)) && \
 	  ssa->var_info && \
@@ -204,19 +206,30 @@ static bool zend_long_is_power_of_two(zend_long x)
 #define OP2_RANGE()      OP_RANGE(ssa_op, op2)
 #define OP1_DATA_RANGE() OP_RANGE(ssa_op + 1, op1)
 
+#if defined(__x86_64__) || defined(i386) || defined(ZEND_WIN32)
 #include "dynasm/dasm_x86.h"
+#elif defined(__aarch64__)
+static int zend_jit_add_veneer(dasm_State *Dst, void *buffer, uint32_t ins, int *b, uint32_t *cp, ptrdiff_t offset);
+#define DASM_ADD_VENEER zend_jit_add_veneer
+#include "dynasm/dasm_arm64.h"
+#endif
+
 #include "jit/zend_jit_helpers.c"
 #include "jit/zend_jit_disasm.c"
 #ifndef _WIN32
-#include "jit/zend_jit_gdb.c"
-#include "jit/zend_jit_perf_dump.c"
+# include "jit/zend_jit_gdb.c"
+# include "jit/zend_jit_perf_dump.c"
 #endif
 #ifdef HAVE_OPROFILE
 # include "jit/zend_jit_oprofile.c"
 #endif
-#include "jit/zend_jit_vtune.c"
 
+#if defined(__x86_64__) || defined(i386) || defined(ZEND_WIN32)
+#include "jit/zend_jit_vtune.c"
 #include "jit/zend_jit_x86.c"
+#elif defined(__aarch64__)
+#include "jit/zend_jit_arm64.c"
+#endif
 
 #if _WIN32
 # include <Windows.h>
@@ -298,14 +311,31 @@ static void handle_dasm_error(int ret) {
 		case DASM_S_RANGE_PC:
 			fprintf(stderr, "DASM_S_RANGE_PC %d\n", ret & 0xffffffu);
 			break;
+#ifdef DASM_S_RANGE_VREG
 		case DASM_S_RANGE_VREG:
 			fprintf(stderr, "DASM_S_RANGE_VREG\n");
 			break;
+#endif
+#ifdef DASM_S_UNDEF_L
 		case DASM_S_UNDEF_L:
 			fprintf(stderr, "DASM_S_UNDEF_L\n");
 			break;
+#endif
+#ifdef DASM_S_UNDEF_LG
+		case DASM_S_UNDEF_LG:
+			fprintf(stderr, "DASM_S_UNDEF_LG\n");
+			break;
+#endif
+#ifdef DASM_S_RANGE_REL
+		case DASM_S_RANGE_REL:
+			fprintf(stderr, "DASM_S_RANGE_REL\n");
+			break;
+#endif
 		case DASM_S_UNDEF_PC:
 			fprintf(stderr, "DASM_S_UNDEF_PC\n");
+			break;
+		default:
+			fprintf(stderr, "DASM_S_%0x\n", ret & 0xff000000u);
 			break;
 	}
 	ZEND_UNREACHABLE();
@@ -380,6 +410,10 @@ static void *dasm_link_and_encode(dasm_State             **dasm_state,
 		return NULL;
 	}
 
+#ifdef __aarch64__
+	dasm_venners_size = 0;
+#endif
+
 	ret = dasm_encode(dasm_state, *dasm_ptr);
 	if (ret != DASM_S_OK) {
 #if ZEND_DEBUG
@@ -388,8 +422,15 @@ static void *dasm_link_and_encode(dasm_State             **dasm_state,
 		return NULL;
 	}
 
+#ifdef __aarch64__
+	size += dasm_venners_size;
+#endif
+
 	entry = *dasm_ptr;
 	*dasm_ptr = (void*)((char*)*dasm_ptr + ZEND_MM_ALIGNED_SIZE_EX(size, DASM_ALIGNMENT));
+
+	/* flush the hardware I-cache */
+	JIT_CACHE_FLUSH(entry, entry + size);
 
 	if (trace_num) {
 		zend_jit_trace_add_code(entry, size);
@@ -3632,7 +3673,7 @@ jit_failure:
 }
 
 /* Run-time JIT handler */
-static void ZEND_FASTCALL zend_runtime_jit(void)
+static int ZEND_FASTCALL zend_runtime_jit(void)
 {
 	zend_execute_data *execute_data = EG(current_execute_data);
 	zend_op_array *op_array = &EX(func)->op_array;
@@ -3664,6 +3705,7 @@ static void ZEND_FASTCALL zend_runtime_jit(void)
 	zend_shared_alloc_unlock();
 
 	/* JIT-ed code is going to be called by VM */
+	return 0;
 }
 
 void zend_jit_check_funcs(HashTable *function_table, bool is_method) {
@@ -4364,8 +4406,14 @@ ZEND_EXT_API int zend_jit_startup(void *buf, size_t size, bool reattached)
 		return FAILURE;
 	}
 
-	/* save JIT buffer pos */
 	zend_jit_unprotect();
+#ifdef __aarch64__
+	/* reserve space for global labels veneers */
+	dasm_labels_veneers = *dasm_ptr;
+	*dasm_ptr = (void**)*dasm_ptr + zend_lb_MAX;
+	memset(dasm_labels_veneers, 0, sizeof(void*) * zend_lb_MAX);
+#endif
+	/* save JIT buffer pos */
 	dasm_ptr[1] = dasm_ptr[0];
 	zend_jit_protect();
 
@@ -4375,7 +4423,7 @@ ZEND_EXT_API int zend_jit_startup(void *buf, size_t size, bool reattached)
 ZEND_EXT_API void zend_jit_shutdown(void)
 {
 	if (JIT_G(debug) & ZEND_JIT_DEBUG_SIZE) {
-		fprintf(stderr, "\nJIT memory usage: %td\n", (char*)*dasm_ptr - (char*)dasm_buf);
+		fprintf(stderr, "\nJIT memory usage: %td\n", (ptrdiff_t)((char*)*dasm_ptr - (char*)dasm_buf));
 	}
 
 #ifdef HAVE_OPROFILE

@@ -57,23 +57,31 @@ PHP 8.1 UPGRADE NOTES
     This means that static variables in methods now behave the same way as
     static properties.
     RFC: https://wiki.php.net/rfc/static_variable_inheritance
+  . Most non-final internal methods now require overriding methods to declare a
+    compatible return type, otherwise a deprecated notice is emitted during
+    inheritance validation.
+    RFC: https://wiki.php.net/rfc/internal_method_return_types
 
 - Fileinfo:
   . The fileinfo functions now accept and return, respectively, finfo objects
     instead of resources.
 
+- FTP:
+  . The FTP functions now accept and return, respectively, FTP\Connection objects
+    instead of resources.
+
 - IMAP:
-  . The IMAP functions now accept and return, respectively, IMAPConnection objects
+  . The IMAP functions now accept and return, respectively, IMAP\Connection objects
     instead of resources.
 
 - LDAP:
-  . The LDAP functions now accept and return, respectively, LDAP objects
+  . The LDAP functions now accept and return, respectively, LDAP\Connection objects
     instead of "ldap link" resources. Return value checks using is_resource()
     should be replaced with checks for `false`.
-  . The LDAP functions now accept and return, respectively, LDAPResult objects
+  . The LDAP functions now accept and return, respectively, LDAP\Result objects
     instead of "ldap result" resources. Return value checks using is_resource()
     should be replaced with checks for `false`.
-  . The LDAP functions now accept and return, respectively, LDAPResultEntry
+  . The LDAP functions now accept and return, respectively, LDAP\ResultEntry
     objects instead of "ldap result entry" resources. Return value checks using
     is_resource() should be replaced with checks for `false`.
 
@@ -116,6 +124,25 @@ PHP 8.1 UPGRADE NOTES
     types. You can restore the previous behavior by enabling the
     PDO::ATTR_STRINGIFY_FETCHES option.
 
+- PgSQL:
+  . The PgSQL functions now accept and return, respectively, \PgSql\Connection
+    objects instead of "pgsql link" resources. Return value checks using
+    is_resource() should be replaced with checks for `false`.
+  . The PgSQL functions now accept and return, respectively, \PgSql\Result
+    objects instead of "pgsql result" resources. Return value checks using
+    is_resource() should be replaced with checks for `false`.
+  . The PgSQL functions now accept and return, respectively, \PgSql\Lob
+    objects instead of "pgsql large object" resources. Return value checks
+    using is_resource() should be replaced with checks for `false`.
+
+- PSpell:
+  . The PSpell functions now accept and return, respectively, PSpell\Dictionary objects
+    instead of "pspell" resources. Return value checks using is_resource()
+    should be replaced with checks for `false`.
+  . The PSpell functions now accept and return, respectively, PSpell\Config objects
+    instead of "pspell config" resources. Return value checks using is_resource()
+    should be replaced with checks for `false`.
+
 - Standard:
   . version_compare() no longer accepts undocumented operator abbreviations.
   . htmlspecialchars(), htmlentities(), htmlspecialchars_decode(),
@@ -153,6 +180,9 @@ PHP 8.1 UPGRADE NOTES
     RFC: https://wiki.php.net/rfc/noreturn_type
   . Added support for fibers.
     RFC: https://wiki.php.net/rfc/fibers
+  . File uploads now provide an additional full_path key, which contains the
+    full path (rather than just the basename) of the uploaded file. This is
+    intended for use in conjunction with "upload webkitdirectory".
 
 - Curl:
   . Added CURLOPT_DOH_URL option.
@@ -251,6 +281,12 @@ PHP 8.1 UPGRADE NOTES
 3. Changes in SAPI modules
 ========================================
 
+- CLI:
+  . Using -a without the readline extension will now result in an error.
+    Previously, -a without readline had the same behavior as calling php without
+    any arguments, apart from printing an additional "Interactive mode enabled"
+    message. This mode was not, in fact, interactive.
+
 ========================================
 4. Deprecated Functionality
 ========================================
@@ -297,6 +333,10 @@ PHP 8.1 UPGRADE NOTES
   . All GMP function now accept octal string with the leading octal prefix ("0o"/"0O")
     RFC: https://wiki.php.net/rfc/explicit_octal_notation
 
+- PDO ODBC:
+  . PDO::getAttributes() with PDO::ATTR_SERVER_INFO and PDO::ATTR_SERVER_VERSION
+    now return values instead of throwing PDOException.
+
 ========================================
 6. New Functions
 ========================================
@@ -309,6 +349,34 @@ PHP 8.1 UPGRADE NOTES
   . Added fsync() and fdatasync(), which instruct the operating system to
     flush its buffers to physical storage.
     RFC: https://wiki.php.net/rfc/fsync_function
+
+- Sodium:
+  . Added the XChaCha20 stream cipher interface functions:
+
+    - sodium_crypto_stream_xchacha20()
+    - sodium_crypto_stream_xchacha20_keygen()
+    - sodium_crypto_stream_xchacha20_xor()
+
+  . Added the Ristretto255 functions, which are available in libsodium 1.0.18.
+
+    Ristretto is a technique for constructing prime order elliptic curve groups with non-malleable encodings.
+    Ristretto255 implements Ristretto atop Curve25519.
+
+    - sodium_crypto_core_ristretto255_add()
+    - sodium_crypto_core_ristretto255_from_hash()
+    - sodium_crypto_core_ristretto255_is_valid_point()
+    - sodium_crypto_core_ristretto255_random()
+    - sodium_crypto_core_ristretto255_scalar_add()
+    - sodium_crypto_core_ristretto255_scalar_complement()
+    - sodium_crypto_core_ristretto255_scalar_invert()
+    - sodium_crypto_core_ristretto255_scalar_mul()
+    - sodium_crypto_core_ristretto255_scalar_negate()
+    - sodium_crypto_core_ristretto255_scalar_random()
+    - sodium_crypto_core_ristretto255_scalar_reduce()
+    - sodium_crypto_core_ristretto255_scalar_sub()
+    - sodium_crypto_core_ristretto255_sub()
+    - sodium_crypto_scalarmult_ristretto255()
+    - sodium_crypto_scalarmult_ristretto255_base()
 
 ========================================
 7. New Classes and Interfaces
@@ -347,6 +415,9 @@ PHP 8.1 UPGRADE NOTES
 ========================================
 11. Changes to INI File Handling
 ========================================
+
+- The log_errors_max_len ini setting has been removed. It no longer had an
+  effect since PHP 8.0.
 
 ========================================
 12. Windows Support

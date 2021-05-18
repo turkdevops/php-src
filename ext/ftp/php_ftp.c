@@ -5,7 +5,7 @@
    | This source file is subject to version 3.01 of the PHP license,      |
    | that is bundled with this package in the file LICENSE, and is        |
    | available through the world-wide-web at the following url:           |
-   | http://www.php.net/license/3_01.txt                                  |
+   | https://www.php.net/license/3_01.txt                                 |
    | If you did not receive a copy of the PHP license and are unable to   |
    | obtain it through the world-wide-web, please send a note to          |
    | license@php.net so we can mail you a copy immediately.               |
@@ -83,7 +83,7 @@ static zend_object* ftp_object_create(zend_class_entry* ce) {
 }
 
 static zend_function *ftp_object_get_constructor(zend_object *zobj) {
-	zend_throw_error(NULL, "Cannot directly construct FTPConnection, use ftp_connect() or ftp_ssl_connect() instead");
+	zend_throw_error(NULL, "Cannot directly construct FTP\\Connection, use ftp_connect() or ftp_ssl_connect() instead");
 	return NULL;
 }
 
@@ -108,7 +108,7 @@ PHP_MINIT_FUNCTION(ftp)
 #endif
 #endif
 
-	php_ftp_ce = register_class_FTPConnection();
+	php_ftp_ce = register_class_FTP_Connection();
 	php_ftp_ce->create_object = ftp_object_create;
 	php_ftp_ce->serialize = zend_class_serialize_deny;
 	php_ftp_ce->unserialize = zend_class_unserialize_deny;
@@ -229,7 +229,7 @@ PHP_FUNCTION(ftp_ssl_connect)
 #define GET_FTPBUF(ftpbuf, zftp) \
 	ftpbuf = ftp_object_from_zend_object(Z_OBJ_P(zftp))->ftp; \
 	if (!ftpbuf) { \
-		zend_throw_exception(zend_ce_value_error, "FTPConnection is already closed", 0); \
+		zend_throw_exception(zend_ce_value_error, "FTP\\Connection is already closed", 0); \
 		RETURN_THROWS(); \
 	}
 

@@ -5,7 +5,7 @@
   | This source file is subject to version 3.01 of the PHP license,      |
   | that is bundled with this package in the file LICENSE, and is        |
   | available through the world-wide-web at the following url:           |
-  | http://www.php.net/license/3_01.txt                                  |
+  | https://www.php.net/license/3_01.txt                                 |
   | If you did not receive a copy of the PHP license and are unable to   |
   | obtain it through the world-wide-web, please send a note to          |
   | license@php.net so we can mail you a copy immediately.               |
@@ -94,7 +94,11 @@ int _pdo_mysql_error(pdo_dbh_t *dbh, pdo_stmt_t *stmt, const char *file, int lin
 				dbh->is_persistent);
 
 		} else {
-			einfo->errmsg = pestrdup(mysql_error(H->server), dbh->is_persistent);
+			if (S && S->stmt) {
+				einfo->errmsg = pestrdup(mysql_stmt_error(S->stmt), dbh->is_persistent);
+			} else {
+				einfo->errmsg = pestrdup(mysql_error(H->server), dbh->is_persistent);
+			}
 		}
 	} else { /* no error */
 		strcpy(*pdo_err, PDO_ERR_NONE);

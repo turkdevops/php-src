@@ -7,7 +7,7 @@
    | This source file is subject to version 3.01 of the PHP license,      |
    | that is bundled with this package in the file LICENSE, and is        |
    | available through the world-wide-web at the following url:           |
-   | http://www.php.net/license/3_01.txt                                  |
+   | https://www.php.net/license/3_01.txt                                 |
    | If you did not receive a copy of the PHP license and are unable to   |
    | obtain it through the world-wide-web, please send a note to          |
    | license@php.net so we can mail you a copy immediately.               |
@@ -507,6 +507,25 @@ static zend_ssa *zend_jit_trace_build_ssa(const zend_op_array *op_array, zend_sc
 
 	memset(ssa, 0, sizeof(zend_ssa));
 	ssa->cfg.blocks_count = 1;
+
+	if (JIT_G(opt_level) == ZEND_JIT_LEVEL_INLINE) {
+		zend_cfg cfg;
+		void *checkpoint = zend_arena_checkpoint(CG(arena));
+
+		if (zend_jit_build_cfg(op_array, &cfg) == SUCCESS) {
+			ssa->cfg.flags = cfg.flags;
+		} else{
+			ssa->cfg.flags |= ZEND_FUNC_INDIRECT_VAR_ACCESS;
+		}
+
+		/* TODO: move this to zend_cfg.c ? */
+		if (!op_array->function_name) {
+			ssa->cfg.flags |= ZEND_FUNC_INDIRECT_VAR_ACCESS;
+		}
+
+		zend_arena_release(&CG(arena), checkpoint);
+	}
+
 	return ssa;
 }
 
@@ -6928,7 +6947,7 @@ static void zend_jit_dump_exit_info(zend_jit_trace_info *t)
 			} else if (STACK_REG(stack, j) == ZREG_ZVAL_COPY_GPR0) {
 				fprintf(stderr, " ");
 				zend_dump_var(op_array, (j < op_array->last_var) ? IS_CV : 0, j);
-				fprintf(stderr, ":unknown(zval_copy(%s))", zend_reg_name[0]);
+				fprintf(stderr, ":unknown(zval_copy(%s))", zend_reg_name[ZREG_COPY]);
 			}
 		}
 		fprintf(stderr, "\n");
@@ -7459,7 +7478,7 @@ int ZEND_FASTCALL zend_jit_trace_exit(uint32_t exit_num, zend_jit_registers_buf 
 			} else if (STACK_REG(stack, i) == ZREG_ZVAL_TRY_ADDREF) {
 				Z_TRY_ADDREF_P(EX_VAR_NUM(i));
 			} else if (STACK_REG(stack, i) == ZREG_ZVAL_COPY_GPR0) {
-				zval *val = (zval*)regs->gpr[0];
+				zval *val = (zval*)regs->gpr[ZREG_COPY];
 
 				if (UNEXPECTED(Z_TYPE_P(val) == IS_UNDEF)) {
 					/* Undefined array index or property */
@@ -7500,7 +7519,7 @@ int ZEND_FASTCALL zend_jit_trace_exit(uint32_t exit_num, zend_jit_registers_buf 
 			}
 		}
 		if (t->exit_info[exit_num].flags & ZEND_JIT_EXIT_METHOD_CALL) {
-			zend_function *func = (zend_function*)regs->gpr[0];
+			zend_function *func = (zend_function*)regs->gpr[ZREG_COPY];
 
 			if (UNEXPECTED(func->common.fn_flags & ZEND_ACC_CALL_VIA_TRAMPOLINE)) {
 				zend_string_release_ex(func->common.function_name, 0);

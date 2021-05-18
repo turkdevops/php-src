@@ -7,7 +7,7 @@
   | This source file is subject to version 3.01 of the PHP license,      |
   | that is bundled with this package in the file LICENSE, and is        |
   | available through the world-wide-web at the following url:           |
-  | http://www.php.net/license/3_01.txt.                                 |
+  | https://www.php.net/license/3_01.txt                                 |
   | If you did not receive a copy of the PHP license and are unable to   |
   | obtain it through the world-wide-web, please send a note to          |
   | license@php.net so we can mail you a copy immediately.               |
@@ -885,22 +885,16 @@ PHP_METHOD(Phar, mungServer)
 			RETURN_THROWS();
 		}
 
-		if (Z_STRLEN_P(data) == sizeof("PHP_SELF")-1 && !strncmp(Z_STRVAL_P(data), "PHP_SELF", sizeof("PHP_SELF")-1)) {
+		if (zend_string_equals_literal(Z_STR_P(data), "PHP_SELF")) {
 			PHAR_G(phar_SERVER_mung_list) |= PHAR_MUNG_PHP_SELF;
-		}
-
-		if (Z_STRLEN_P(data) == sizeof("REQUEST_URI")-1) {
-			if (!strncmp(Z_STRVAL_P(data), "REQUEST_URI", sizeof("REQUEST_URI")-1)) {
-				PHAR_G(phar_SERVER_mung_list) |= PHAR_MUNG_REQUEST_URI;
-			}
-			if (!strncmp(Z_STRVAL_P(data), "SCRIPT_NAME", sizeof("SCRIPT_NAME")-1)) {
-				PHAR_G(phar_SERVER_mung_list) |= PHAR_MUNG_SCRIPT_NAME;
-			}
-		}
-
-		if (Z_STRLEN_P(data) == sizeof("SCRIPT_FILENAME")-1 && !strncmp(Z_STRVAL_P(data), "SCRIPT_FILENAME", sizeof("SCRIPT_FILENAME")-1)) {
+		} else if (zend_string_equals_literal(Z_STR_P(data), "REQUEST_URI")) {
+			PHAR_G(phar_SERVER_mung_list) |= PHAR_MUNG_REQUEST_URI;
+		} else if (zend_string_equals_literal(Z_STR_P(data), "SCRIPT_NAME")) {
+			PHAR_G(phar_SERVER_mung_list) |= PHAR_MUNG_SCRIPT_NAME;
+		} else if (zend_string_equals_literal(Z_STR_P(data), "SCRIPT_FILENAME")) {
 			PHAR_G(phar_SERVER_mung_list) |= PHAR_MUNG_SCRIPT_FILENAME;
 		}
+		// TODO Warning for invalid value?
 	} ZEND_HASH_FOREACH_END();
 }
 /* }}} */

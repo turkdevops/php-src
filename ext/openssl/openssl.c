@@ -5,7 +5,7 @@
    | This source file is subject to version 3.01 of the PHP license,      |
    | that is bundled with this package in the file LICENSE, and is        |
    | available through the world-wide-web at the following url:           |
-   | http://www.php.net/license/3_01.txt                                  |
+   | https://www.php.net/license/3_01.txt                                 |
    | If you did not receive a copy of the PHP license and are unable to   |
    | obtain it through the world-wide-web, please send a note to          |
    | license@php.net so we can mail you a copy immediately.               |
@@ -478,7 +478,7 @@ php_stream* php_openssl_get_stream_from_ssl_handle(const SSL *ssl)
 	return (php_stream*)SSL_get_ex_data(ssl, ssl_stream_data_index);
 }
 
-int php_openssl_get_ssl_stream_data_index()
+int php_openssl_get_ssl_stream_data_index(void)
 {
 	return ssl_stream_data_index;
 }
@@ -938,7 +938,7 @@ static void php_openssl_dispose_config(struct php_x509_request * req) /* {{{ */
 #else
 #define PHP_OPENSSL_RAND_ADD_TIME() php_openssl_rand_add_timeval()
 
-static inline void php_openssl_rand_add_timeval()  /* {{{ */
+static inline void php_openssl_rand_add_timeval(void)  /* {{{ */
 {
 	struct timeval tv;
 
