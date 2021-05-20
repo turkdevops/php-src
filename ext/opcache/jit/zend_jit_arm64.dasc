@@ -83,10 +83,21 @@
 |.define ZREG_TMP3,   ZREG_X17
 |.define ZREG_FPTMP,  ZREG_V16
 
-|.define HYBRID_SPAD, #32     // padding for stack alignment
+|.define HYBRID_SPAD, 32     // padding for stack alignment
 
 #define TMP_ZVAL_OFFSET 16
 #define DASM_ALIGNMENT  16
+
+typedef enum _sp_adj_kind {
+	SP_ADJ_NONE,
+	SP_ADJ_RET,
+	SP_ADJ_VM,
+	SP_ADJ_JIT,
+	SP_ADJ_ASSIGN,
+	SP_ADJ_LAST
+} sp_adj_kind;
+
+static int sp_adj[SP_ADJ_LAST];
 
 /* Encoding of immediate. TODO: shift mode may be supported in the near future. */
 #define MAX_IMM12       0xfff          // maximum value for imm12
@@ -98,16 +109,42 @@
 #define LDR_STR_PIMM32  (MAX_IMM12*4)  // ldr/str insn for 32-bit register: pimm is imm12 * 4
 #define LDRB_STRB_PIMM  MAX_IMM12      // ldrb/strb insn
 
-#define B_IMM26         (1<<27)        // signed imm26 * 4
+#define B_IMM           (1<<27)        // signed imm26 * 4
+#define ADR_IMM         (1<<20)        // signed imm21
+#define ADRP_IMM        (1LL<<32)      // signed imm21 * 4096
 
 static bool arm64_may_use_b(const void *addr)
 {
 	if (addr >= dasm_buf && addr < dasm_end) {
-		return (((char*)dasm_end - (char*)dasm_buf) < B_IMM26);
+		return (((char*)dasm_end - (char*)dasm_buf) < B_IMM);
 	} else if (addr >= dasm_end) {
-		return (((char*)addr - (char*)dasm_buf) < B_IMM26);
+		return (((char*)addr - (char*)dasm_buf) < B_IMM);
 	} else if (addr < dasm_buf) {
-		return (((char*)dasm_end - (char*)addr) < B_IMM26);
+		return (((char*)dasm_end - (char*)addr) < B_IMM);
+	}
+	return 0;
+}
+
+static bool arm64_may_use_adr(const void *addr)
+{
+	if (addr >= dasm_buf && addr < dasm_end) {
+		return (((char*)dasm_end - (char*)dasm_buf) < ADR_IMM);
+	} else if (addr >= dasm_end) {
+		return (((char*)addr - (char*)dasm_buf) < ADR_IMM);
+	} else if (addr < dasm_buf) {
+		return (((char*)dasm_end - (char*)addr) < ADR_IMM);
+	}
+	return 0;
+}
+
+static bool arm64_may_use_adrp(const void *addr)
+{
+	if (addr >= dasm_buf && addr < dasm_end) {
+		return (((char*)dasm_end - (char*)dasm_buf) < ADRP_IMM);
+	} else if (addr >= dasm_end) {
+		return (((char*)addr - (char*)dasm_buf) < ADRP_IMM);
+	} else if (addr < dasm_buf) {
+		return (((char*)dasm_end - (char*)addr) < ADRP_IMM);
 	}
 	return 0;
 }
@@ -196,13 +233,13 @@ static int logical_immediate_p (uint64_t value, uint32_t reg_size)
 
 |.macro ADD_HYBRID_SPAD
 ||#ifndef ZEND_VM_HYBRID_JIT_RED_ZONE_SIZE
-|	add sp, sp, HYBRID_SPAD
+|	add sp, sp, # HYBRID_SPAD
 ||#endif
 |.endmacro
 
 |.macro SUB_HYBRID_SPAD
 ||#ifndef ZEND_VM_HYBRID_JIT_RED_ZONE_SIZE
-|	sub sp, sp, HYBRID_SPAD
+|	sub sp, sp, # HYBRID_SPAD
 ||#endif
 |.endmacro
 
@@ -212,6 +249,13 @@ static int logical_immediate_p (uint64_t value, uint32_t reg_size)
 |		mov reg, xzr
 ||	} else if (((uintptr_t)(addr)) <= MOVZ_IMM) {
 | 		movz reg, #((uint64_t)(addr))
+||	} else if (arm64_may_use_adr((void*)(addr))) {
+|		adr reg, &addr
+||	} else if (arm64_may_use_adrp((void*)(addr))) {
+|		adrp reg, &(((uintptr_t)(addr)))
+||		if (((uintptr_t)(addr)) & 0xfff) {
+|			add reg, reg, #(((uintptr_t)(addr)) & 0xfff)
+||		}
 ||	} else if ((uintptr_t)(addr) & 0xffff) {
 |		movz reg, #((uintptr_t)(addr) & 0xffff)
 ||		if (((uintptr_t)(addr) >> 16) & 0xffff) {
@@ -469,8 +513,16 @@ static int logical_immediate_p (uint64_t value, uint32_t reg_size)
 
 // Store the value from a register 'op' into memory 'addr'
 |.macro MEM_STORE, str_ins, op, addr, tmp_reg
-|	LOAD_ADDR tmp_reg, addr
-|	str_ins op, [tmp_reg]
+||	if (((uintptr_t)(addr)) > MOVZ_IMM && arm64_may_use_adr((void*)(addr))) {
+|		adr tmp_reg, &addr
+|		str_ins op, [tmp_reg]
+||	} else if (((uintptr_t)(addr)) > MOVZ_IMM && arm64_may_use_adrp((void*)(addr))) {
+|		adrp tmp_reg, &(((uintptr_t)(addr)))
+|		str_ins op, [tmp_reg, #(((uintptr_t)(addr)) & 0xfff)]
+||	} else {
+|		LOAD_ADDR tmp_reg, addr
+|		str_ins op, [tmp_reg]
+||	}
 |.endmacro
 
 // 'op' is 64-bit register
@@ -504,8 +556,16 @@ static int logical_immediate_p (uint64_t value, uint32_t reg_size)
 
 // Load the value from memory 'addr' into a register 'op'
 |.macro MEM_LOAD, ldr_ins, op, addr, tmp_reg
-|	LOAD_ADDR tmp_reg, addr
-|	ldr_ins op, [tmp_reg]
+||	if (((uintptr_t)(addr)) > MOVZ_IMM && arm64_may_use_adr((void*)(addr))) {
+|		adr tmp_reg, &addr
+|		ldr_ins op, [tmp_reg]
+||	} else if (((uintptr_t)(addr)) > MOVZ_IMM && arm64_may_use_adrp((void*)(addr))) {
+|		adrp tmp_reg, &(((uintptr_t)(addr)))
+|		ldr_ins op, [tmp_reg, #(((uintptr_t)(addr)) & 0xfff)]
+||	} else {
+|		LOAD_ADDR tmp_reg, addr
+|		ldr_ins op, [tmp_reg]
+||	}
 |.endmacro
 
 |.macro MEM_LOAD_ZTS, ldr_ins, op, struct, field, tmp_reg
@@ -557,7 +617,8 @@ static int logical_immediate_p (uint64_t value, uint32_t reg_size)
 // The computation result is stored back to memory 'addr'. 'op' can be either imm12 or register.
 // For constant case, it should be guaranteed that 'op' can be represented by imm12 before using this macro.
 |.macro MEM_LOAD_OP_STORE, mem_ins, ldr_ins, str_ins, op, addr, tmp_reg1, tmp_reg2
-|	MEM_LOAD ldr_ins, tmp_reg1, addr, tmp_reg2
+|	LOAD_ADDR tmp_reg2, addr
+|	ldr_ins, tmp_reg1, [tmp_reg2]
 |	mem_ins tmp_reg1, tmp_reg1, op
 |	str_ins tmp_reg1, [tmp_reg2]
 |.endmacro
@@ -786,8 +847,7 @@ static int logical_immediate_p (uint64_t value, uint32_t reg_size)
 // Operand1 is from 'reg', and operand2 is from 'addr'.
 |.macro DOUBLE_CMP, reg, addr, tmp_reg, fp_tmp_reg
 ||	if (Z_MODE(addr) == IS_CONST_ZVAL) {
-|		LOAD_ADDR Rx(tmp_reg), Z_ZV(addr)
-|		ldr Rd(fp_tmp_reg-ZREG_V0), [Rx(tmp_reg)]
+|		MEM_LOAD ldr, Rd(fp_tmp_reg-ZREG_V0), Z_ZV(addr), Rx(tmp_reg)
 |		fcmp Rd(reg-ZREG_V0), Rd(fp_tmp_reg-ZREG_V0)
 ||	} else if (Z_MODE(addr) == IS_MEM_ZVAL) {
 |		SAFE_MEM_ACC_WITH_UOFFSET ldr, Rd(fp_tmp_reg-ZREG_V0), Rx(Z_REG(addr)), Z_OFFSET(addr), Rx(tmp_reg)
@@ -1020,8 +1080,7 @@ static int logical_immediate_p (uint64_t value, uint32_t reg_size)
 |.macro GET_ZVAL_DVAL, reg, addr, tmp_reg
 ||	if (Z_MODE(addr) != IS_REG || reg != Z_REG(addr)) {
 ||		if (Z_MODE(addr) == IS_CONST_ZVAL) {
-|			LOAD_ADDR Rx(tmp_reg), Z_ZV(addr)
-|			ldr Rd(reg-ZREG_V0), [Rx(tmp_reg)]
+|			MEM_LOAD ldr, Rd(reg-ZREG_V0), Z_ZV(addr), Rx(tmp_reg)
 ||		} else if (Z_MODE(addr) == IS_MEM_ZVAL) {
 |			SAFE_MEM_ACC_WITH_UOFFSET ldr, Rd(reg-ZREG_V0), Rx(Z_REG(addr)), Z_OFFSET(addr), Rx(tmp_reg)
 ||		} else if (Z_MODE(addr) == IS_REG) {
@@ -1036,8 +1095,7 @@ static int logical_immediate_p (uint64_t value, uint32_t reg_size)
 ||	if (Z_TYPE_P(zv) > IS_TRUE) {
 ||		if (Z_TYPE_P(zv) == IS_DOUBLE) {
 ||			zend_reg dst_reg = (Z_MODE(dst_addr) == IS_REG) ? Z_REG(dst_addr) : fp_tmp_reg;
-|			LOAD_ADDR Rx(tmp_reg1), zv
-|			ldr Rd(dst_reg-ZREG_V0), [Rx(tmp_reg1)]
+|			MEM_LOAD ldr, Rd(dst_reg-ZREG_V0), zv, Rx(tmp_reg1)
 |			SET_ZVAL_DVAL dst_addr, dst_reg, tmp_reg2
 ||		} else if (Z_TYPE_P(zv) == IS_LONG && dst_def_info == MAY_BE_DOUBLE) {
 ||			zend_reg dst_reg = (Z_MODE(dst_addr) == IS_REG) ? Z_REG(dst_addr) : fp_tmp_reg;
@@ -1067,8 +1125,7 @@ static int logical_immediate_p (uint64_t value, uint32_t reg_size)
 ||		if (Z_TYPE_P(zv) == IS_DOUBLE) {
 ||			zend_reg dst_reg = (Z_MODE(dst_addr) == IS_REG) ?
 ||				Z_REG(dst_addr) : ((Z_MODE(res_addr) == IS_REG) ? Z_MODE(res_addr) : fp_tmp_reg);
-|			LOAD_ADDR Rx(tmp_reg1), zv
-|			ldr Rd(dst_reg-ZREG_V0), [Rx(tmp_reg1)]
+|			MEM_LOAD ldr, Rd(dst_reg-ZREG_V0), zv, Rx(tmp_reg1)
 |			SET_ZVAL_DVAL dst_addr, dst_reg, tmp_reg2
 |			SET_ZVAL_DVAL res_addr, dst_reg, tmp_reg2
 ||		} else if (Z_TYPE_P(zv) == IS_LONG && dst_def_info == MAY_BE_DOUBLE) {
@@ -2592,42 +2649,42 @@ static int zend_jit_assign_cv_stub(dasm_State **Dst)
 }
 
 static const zend_jit_stub zend_jit_stubs[] = {
-	JIT_STUB(interrupt_handler),
-	JIT_STUB(exception_handler),
-	JIT_STUB(exception_handler_undef),
-	JIT_STUB(leave_function),
-	JIT_STUB(leave_throw),
-	JIT_STUB(icall_throw),
-	JIT_STUB(throw_cannot_pass_by_ref),
-	JIT_STUB(undefined_offset),
-	JIT_STUB(undefined_index),
-	JIT_STUB(cannot_add_element),
-	JIT_STUB(undefined_offset_ex),
-	JIT_STUB(undefined_index_ex),
-	JIT_STUB(cannot_add_element_ex),
-	JIT_STUB(undefined_function),
-	JIT_STUB(negative_shift),
-	JIT_STUB(mod_by_zero),
-	JIT_STUB(invalid_this),
-	JIT_STUB(trace_halt),
-	JIT_STUB(trace_exit),
-	JIT_STUB(trace_escape),
-	JIT_STUB(hybrid_runtime_jit),
-	JIT_STUB(hybrid_profile_jit),
-	JIT_STUB(hybrid_hot_code),
-	JIT_STUB(hybrid_func_hot_counter),
-	JIT_STUB(hybrid_loop_hot_counter),
-	JIT_STUB(hybrid_hot_trace),
-	JIT_STUB(hybrid_func_trace_counter),
-	JIT_STUB(hybrid_ret_trace_counter),
-	JIT_STUB(hybrid_loop_trace_counter),
-	JIT_STUB(assign_const),
-	JIT_STUB(assign_tmp),
-	JIT_STUB(assign_var),
-	JIT_STUB(assign_cv_noref),
-	JIT_STUB(assign_cv),
+	JIT_STUB(interrupt_handler, SP_ADJ_JIT, SP_ADJ_VM),
+	JIT_STUB(exception_handler, SP_ADJ_JIT, SP_ADJ_VM),
+	JIT_STUB(exception_handler_undef, SP_ADJ_JIT, SP_ADJ_VM),
+	JIT_STUB(leave_function, SP_ADJ_JIT, SP_ADJ_VM),
+	JIT_STUB(leave_throw, SP_ADJ_JIT, SP_ADJ_VM),
+	JIT_STUB(icall_throw, SP_ADJ_JIT, SP_ADJ_VM),
+	JIT_STUB(throw_cannot_pass_by_ref, SP_ADJ_JIT, SP_ADJ_VM),
+	JIT_STUB(undefined_offset, SP_ADJ_JIT, SP_ADJ_VM),
+	JIT_STUB(undefined_index, SP_ADJ_JIT, SP_ADJ_VM),
+	JIT_STUB(cannot_add_element, SP_ADJ_JIT, SP_ADJ_VM),
+	JIT_STUB(undefined_offset_ex, SP_ADJ_JIT, SP_ADJ_VM),
+	JIT_STUB(undefined_index_ex, SP_ADJ_JIT, SP_ADJ_VM),
+	JIT_STUB(cannot_add_element_ex, SP_ADJ_JIT, SP_ADJ_VM),
+	JIT_STUB(undefined_function, SP_ADJ_JIT, SP_ADJ_VM),
+	JIT_STUB(negative_shift, SP_ADJ_JIT, SP_ADJ_VM),
+	JIT_STUB(mod_by_zero, SP_ADJ_JIT, SP_ADJ_VM),
+	JIT_STUB(invalid_this, SP_ADJ_JIT, SP_ADJ_VM),
+	JIT_STUB(trace_halt, SP_ADJ_JIT, SP_ADJ_VM),
+	JIT_STUB(trace_exit, SP_ADJ_JIT, SP_ADJ_VM),
+	JIT_STUB(trace_escape, SP_ADJ_JIT, SP_ADJ_VM),
+	JIT_STUB(hybrid_runtime_jit, SP_ADJ_VM, SP_ADJ_NONE),
+	JIT_STUB(hybrid_profile_jit, SP_ADJ_VM, SP_ADJ_NONE),
+	JIT_STUB(hybrid_hot_code, SP_ADJ_VM, SP_ADJ_NONE),
+	JIT_STUB(hybrid_func_hot_counter, SP_ADJ_VM, SP_ADJ_NONE),
+	JIT_STUB(hybrid_loop_hot_counter, SP_ADJ_VM, SP_ADJ_NONE),
+	JIT_STUB(hybrid_hot_trace, SP_ADJ_VM, SP_ADJ_NONE),
+	JIT_STUB(hybrid_func_trace_counter, SP_ADJ_VM, SP_ADJ_NONE),
+	JIT_STUB(hybrid_ret_trace_counter, SP_ADJ_VM, SP_ADJ_NONE),
+	JIT_STUB(hybrid_loop_trace_counter, SP_ADJ_VM, SP_ADJ_NONE),
+	JIT_STUB(assign_const, SP_ADJ_RET, SP_ADJ_ASSIGN),
+	JIT_STUB(assign_tmp, SP_ADJ_RET, SP_ADJ_ASSIGN),
+	JIT_STUB(assign_var, SP_ADJ_RET, SP_ADJ_ASSIGN),
+	JIT_STUB(assign_cv_noref, SP_ADJ_RET, SP_ADJ_ASSIGN),
+	JIT_STUB(assign_cv, SP_ADJ_RET, SP_ADJ_ASSIGN),
 #ifdef CONTEXT_THREADED_JIT
-	JIT_STUB(context_threaded_call),
+	JIT_STUB(context_threaded_call, SP_ADJ_NONE, SP_ADJ_NONE),
 #endif
 };
 
@@ -2637,120 +2694,91 @@ extern char *_tls_start;
 extern char *_tls_end;
 #endif
 
+#ifdef HAVE_GDB
+# if 0
+typedef struct _Unwind_Context _Unwind_Context;
+typedef int (*_Unwind_Trace_Fn)(_Unwind_Context *, void *);
+extern int _Unwind_Backtrace(_Unwind_Trace_Fn, void *);
+extern uintptr_t _Unwind_GetCFA(_Unwind_Context *);
+
+typedef struct _zend_jit_unwind_arg {
+	int cnt;
+	uintptr_t cfa[3];
+} zend_jit_unwind_arg;
+
+static int zend_jit_unwind_cb(_Unwind_Context *ctx, void *a)
+{
+	zend_jit_unwind_arg *arg = (zend_jit_unwind_arg*)a;
+	arg->cfa[arg->cnt] = _Unwind_GetCFA(ctx);
+	arg->cnt++;
+	if (arg->cnt == 3) {
+		return 5; // _URC_END_OF_STACK
+	}
+	return 0; // _URC_NO_REASON;
+}
+
+static void ZEND_FASTCALL zend_jit_touch_vm_stack_data(void *vm_stack_data)
+{
+	zend_jit_unwind_arg arg;
+
+	memset(&arg, 0, sizeof(arg));
+	_Unwind_Backtrace(zend_jit_unwind_cb, &arg);
+	if (arg.cnt == 3) {
+		sp_adj[SP_ADJ_VM] = arg.cfa[2] - arg.cfa[1];
+	}
+}
+# else
+static void ZEND_FASTCALL zend_jit_touch_vm_stack_data(void *vm_stack_data)
+{
+	uintptr_t ret;
+
+	__asm__ (
+		"ldr %0, [x29]\n\t"
+		"sub %0 ,%0, x29"
+		: "=r"(ret));
+
+	sp_adj[SP_ADJ_VM] = ret;
+}
+# endif
+
+extern void (ZEND_FASTCALL *zend_touch_vm_stack_data)(void *vm_stack_data);
+
+static zend_never_inline void zend_jit_set_sp_adj_vm(void)
+{
+	void (ZEND_FASTCALL *orig_zend_touch_vm_stack_data)(void *);
+
+	orig_zend_touch_vm_stack_data = zend_touch_vm_stack_data;
+	zend_touch_vm_stack_data = zend_jit_touch_vm_stack_data;
+	execute_ex(NULL);                                        // set sp_adj[SP_ADJ_VM]
+	zend_touch_vm_stack_data = orig_zend_touch_vm_stack_data;
+}
+#endif
+
 static int zend_jit_setup(void)
 {
 	allowed_opt_flags = 0;
 
 #if ZTS
-# ifdef _WIN64
-	tsrm_tls_index  = _tls_index * sizeof(void*);
-
-	/* To find offset of "_tsrm_ls_cache" in TLS segment we perform a linear scan of local TLS memory */
-	/* Probably, it might be better solution */
-	do {
-		void ***tls_mem = ((void**)__readgsqword(0x58))[_tls_index];
-		void *val = _tsrm_ls_cache;
-		size_t offset = 0;
-		size_t size = (char*)&_tls_end - (char*)&_tls_start;
-
-		while (offset < size) {
-			if (*tls_mem == val) {
-				tsrm_tls_offset = offset;
-				break;
-			}
-			tls_mem++;
-			offset += sizeof(void*);
-		}
-		if (offset >= size) {
-			// TODO: error message ???
-			return FAILURE;
-		}
-	} while(0);
-# elif ZEND_WIN32
-	tsrm_tls_index  = _tls_index * sizeof(void*);
-
-	/* To find offset of "_tsrm_ls_cache" in TLS segment we perform a linear scan of local TLS memory */
-	/* Probably, it might be better solution */
-	do {
-		void ***tls_mem = ((void***)__readfsdword(0x2c))[_tls_index];
-		void *val = _tsrm_ls_cache;
-		size_t offset = 0;
-		size_t size = (char*)&_tls_end - (char*)&_tls_start;
-
-		while (offset < size) {
-			if (*tls_mem == val) {
-				tsrm_tls_offset = offset;
-				break;
-			}
-			tls_mem++;
-			offset += sizeof(void*);
-		}
-		if (offset >= size) {
-			// TODO: error message ???
-			return FAILURE;
-		}
-	} while(0);
-# elif defined(__APPLE__) && defined(__x86_64__)
-	tsrm_ls_cache_tcb_offset = tsrm_get_ls_cache_tcb_offset();
-	if (tsrm_ls_cache_tcb_offset == 0) {
-		size_t *ti;
-		__asm__(
-			"leaq __tsrm_ls_cache(%%rip),%0"
-			: "=r" (ti));
-		tsrm_tls_offset = ti[2];
-		tsrm_tls_index = ti[1] * 8;
-	}
-# elif defined(__GNUC__) && defined(__x86_64__)
-	tsrm_ls_cache_tcb_offset = tsrm_get_ls_cache_tcb_offset();
-	if (tsrm_ls_cache_tcb_offset == 0) {
-#if defined(__has_attribute) && __has_attribute(tls_model) && !defined(__FreeBSD__)
-		size_t ret;
-
-		asm ("movq _tsrm_ls_cache@gottpoff(%%rip),%0"
-			: "=r" (ret));
-		tsrm_ls_cache_tcb_offset = ret;
-#else
-		size_t *ti;
-
-		__asm__(
-			"leaq _tsrm_ls_cache@tlsgd(%%rip), %0\n"
-			: "=a" (ti));
-		tsrm_tls_offset = ti[1];
-		tsrm_tls_index = ti[0] * 16;
-#endif
-	}
-# elif defined(__GNUC__) && defined(__i386__)
-	tsrm_ls_cache_tcb_offset = tsrm_get_ls_cache_tcb_offset();
-	if (tsrm_ls_cache_tcb_offset == 0) {
-#if !defined(__FreeBSD__)
-		size_t ret;
-
-		asm ("leal _tsrm_ls_cache@ntpoff,%0\n"
-			: "=a" (ret));
-		tsrm_ls_cache_tcb_offset = ret;
-#else
-		size_t *ti, _ebx, _ecx, _edx;
-
-		__asm__(
-			"call 1f\n"
-			".subsection 1\n"
-			"1:\tmovl (%%esp), %%ebx\n\t"
-			"ret\n"
-			".previous\n\t"
-			"addl $_GLOBAL_OFFSET_TABLE_, %%ebx\n\t"
-			"leal _tsrm_ls_cache@tlsldm(%%ebx), %0\n\t"
-			"call ___tls_get_addr@plt\n\t"
-			"leal _tsrm_ls_cache@tlsldm(%%ebx), %0\n"
-			: "=a" (ti), "=&b" (_ebx), "=&c" (_ecx), "=&d" (_edx));
-		tsrm_tls_offset = ti[1];
-		tsrm_tls_index = ti[0] * 8;
-#endif
-	}
-# elif defined(__aarch64__)
 	tsrm_ls_cache_tcb_offset = tsrm_get_ls_cache_tcb_offset();
 	ZEND_ASSERT(tsrm_ls_cache_tcb_offset != 0);
-# elif
-# endif
+#endif
+
+    memset(sp_adj, 0, sizeof(sp_adj));
+#ifdef HAVE_GDB
+	sp_adj[SP_ADJ_RET] = 0;
+	sp_adj[SP_ADJ_ASSIGN] = 32;
+	if (zend_jit_vm_kind == ZEND_VM_KIND_HYBRID) {
+		zend_jit_set_sp_adj_vm();                                // set sp_adj[SP_ADJ_VM]
+#ifndef ZEND_VM_HYBRID_JIT_RED_ZONE_SIZE
+		|| sp_adj[SP_ADJ_JIT] = sp_adj[SP_ADJ_VM] + HYBRID_SPAD; // sub r4, HYBRID_SPAD
+#else
+		|| sp_adj[SP_ADJ_JIT] = sp_adj[SP_ADJ_VM];
+#endif
+	} else if (GCC_GLOBAL_REGS) {
+		|| sp_adj[SP_ADJ_JIT] = sp_adj[SP_ADJ_RET] + SPAD;       // sub r4, SPAD
+	} else {
+		|| sp_adj[SP_ADJ_JIT] = sp_adj[SP_ADJ_RET] + NR_SPAD;    // sub r4, NR_SPAD
+	}
 #endif
 
 	return SUCCESS;
@@ -2780,8 +2808,10 @@ static int zend_jit_prologue(dasm_State **Dst)
 		|	SUB_HYBRID_SPAD
 	} else if (GCC_GLOBAL_REGS) {
 		|	stp x29, x30, [sp, # -SPAD]!    // stack alignment
+		|//	mov x29, sp
 	} else {
 		|	stp x29, x30, [sp, # -NR_SPAD]! // stack alignment
+		|//	mov	x29, sp
 		|	stp FP, RX, T2                  // save FP and IP
 		|	mov FP, FCARG1x
 	}
@@ -2942,31 +2972,50 @@ static int zend_jit_trace_begin(dasm_State **Dst, uint32_t trace_num, zend_jit_t
 	return 1;
 }
 
+static int zend_jit_trace_end(dasm_State **Dst, zend_jit_trace_info *t)
+{
+	uint32_t i;
+	const void *exit_addr;
+
+	/* Emit veneers table for exit points (B instruction for each exit number) */
+	|.cold_code
+	for (i = 0; i < t->exit_count; i++) {
+		exit_addr = zend_jit_trace_get_exit_addr(i);
+		|	b &exit_addr
+	}
+	|=>1: // end of the code
+	|.code
+	return 1;
+}
+
 static int zend_jit_patch(const void *code, size_t size, uint32_t jmp_table_size, const void *from_addr, const void *to_addr)
 {
 	int ret = 0;
 	uint8_t *p, *end;
-	size_t code_size = size;
+	const void *veneer = NULL;
 	ptrdiff_t delta;
 
 	if (jmp_table_size) {
-		const void **jmp_slot = (const void **)((char*)code + size);
+		const void **jmp_slot = (const void **)((char*)code + ZEND_MM_ALIGNED_SIZE_EX(size, sizeof(void*)));
 
-		code_size -= jmp_table_size * sizeof(void*);
 		do {
-			jmp_slot--;
 			if (*jmp_slot == from_addr) {
 				*jmp_slot = to_addr;
 				ret++;
 			}
+			jmp_slot++;
 		} while (--jmp_table_size);
 	}
 
-	p = (uint8_t*)code;
-	end = p + code_size;
-	while (p < end) {
-		uint32_t *ins_ptr = (uint32_t*)p;
-		uint32_t ins = *ins_ptr;
+	end = (uint8_t*)code;
+	p = end + size;
+	while (p >= end) {
+		uint32_t *ins_ptr;
+		uint32_t ins;
+
+		p -= 4;
+		ins_ptr = (uint32_t*)p;
+		ins = *ins_ptr;
 		if ((ins & 0xfc000000u) == 0x14000000u) {
 			// B (imm26:0..25)
 			delta = (uint32_t*)from_addr - ins_ptr;
@@ -2977,6 +3026,9 @@ static int zend_jit_patch(const void *code, size_t size, uint32_t jmp_table_size
 				}
 				*ins_ptr = (ins & 0xfc000000u) | ((uint32_t)delta & 0x03ffffffu);
 				ret++;
+				if (!veneer) {
+					veneer = p;
+				}
 			}
 		} else if ((ins & 0xff000000u) == 0x54000000u ||
 		           (ins & 0x7e000000u) == 0x34000000u) {
@@ -2985,7 +3037,14 @@ static int zend_jit_patch(const void *code, size_t size, uint32_t jmp_table_size
 			if (((ins ^ ((uint32_t)delta << 5)) & 0x00ffffe0u) == 0) {
 				delta = (uint32_t*)to_addr - ins_ptr;
 				if (((delta + 0x40000) >> 19) != 0) {
-					abort(); // brnach target out of range
+					if (veneer) {
+						delta = (uint32_t*)veneer - ins_ptr;
+						if (((delta + 0x40000) >> 19) != 0) {
+							abort(); // brnach target out of range
+						}
+					} else {
+						abort(); // brnach target out of range
+					}
 				}
 				*ins_ptr = (ins & 0xff00001fu) | (((uint32_t)delta & 0x7ffffu) << 5);
 				ret++;
@@ -2996,13 +3055,19 @@ static int zend_jit_patch(const void *code, size_t size, uint32_t jmp_table_size
 			if (((ins ^ ((uint32_t)delta << 5)) & 0x0007ffe0u) == 0) {
 				delta = (uint32_t*)to_addr - ins_ptr;
 				if (((delta + 0x2000) >> 14) != 0) {
-					abort(); // brnach target out of range
+					if (veneer) {
+						delta = (uint32_t*)veneer - ins_ptr;
+						if (((delta + 0x2000) >> 14) != 0) {
+							abort(); // brnach target out of range
+						}
+					} else {
+						abort(); // brnach target out of range
+					}
 				}
 				*ins_ptr = (ins & 0xfff8001fu) | (((uint32_t)delta & 0x3fffu) << 5);
 				ret++;
 			}
 		}
-		p += 4;
 	}
 
 	JIT_CACHE_FLUSH(code, (char*)code + size);
@@ -14529,8 +14594,9 @@ static bool zend_jit_opline_supports_reg(const zend_op_array *op_array, zend_ssa
 		case ZEND_IS_IDENTICAL:
 		case ZEND_IS_NOT_IDENTICAL:
 		case ZEND_CASE:
-		case ZEND_RETURN:
 			return 1;
+		case ZEND_RETURN:
+			return (op_array->type != ZEND_EVAL_CODE && op_array->function_name);
 		case ZEND_ASSIGN:
 			op1_info = OP1_INFO();
 			op2_info = OP2_INFO();
@@ -15055,6 +15121,55 @@ static int zend_jit_add_veneer(dasm_State *Dst, void *buffer, uint32_t ins, int 
 			/* pass */
 		} else if ((ins & 0x1000)) {  /* TBZ, TBNZ */
 			if ((n & 3) == 0 && ((n+0x00008000) >> 16) == 0) {
+				return n;
+			}
+		}
+	} else if (JIT_G(trigger) == ZEND_JIT_ON_HOT_TRACE
+	 && (ins >> 16) == DASM_REL_A) {
+		ptrdiff_t addr = (((ptrdiff_t)(*(b-1))) << 32) | (unsigned int)(*(b-2));
+
+		if ((void*)addr >= dasm_buf && (void*)addr < dasm_end) {
+			uint32_t exit_point = zend_jit_trace_find_exit_point((void*)addr);
+			zend_jit_trace_info *t = zend_jit_get_current_trace_info();
+
+			if (exit_point != (uint32_t)-1) {
+				/* Use exit points table */
+
+				ZEND_ASSERT(exit_point < t->exit_count);
+
+				veneer = (char*)buffer + dasm_getpclabel(&Dst, 1) - (t->exit_count - exit_point) * 4;
+				na = (ptrdiff_t)veneer - (ptrdiff_t)cp + 4;
+				n = (int)na;
+
+				/* check if we can jump to veneer */
+				if ((ptrdiff_t)n != na) {
+					ZEND_ASSERT(0);
+					return 0;
+				} else if (!(ins & 0xf800)) {  /* B, BL */
+					if ((n & 3) != 0 || ((n+0x08000000) >> 28) != 0) {
+						ZEND_ASSERT(0);
+						return 0;
+					}
+				} else if ((ins & 0x800)) {  /* B.cond, CBZ, CBNZ, LDR* literal */
+					if ((n & 3) != 0 || ((n+0x00100000) >> 21) != 0) {
+						ZEND_ASSERT(0);
+						return 0;
+					}
+				} else if ((ins & 0x3000) == 0x2000) {  /* ADR */
+					ZEND_ASSERT(0);
+					return 0;
+				} else if ((ins & 0x3000) == 0x3000) {  /* ADRP */
+					ZEND_ASSERT(0);
+					return 0;
+				} else if ((ins & 0x1000)) {  /* TBZ, TBNZ */
+					if ((n & 3) != 0 || ((n+0x00008000) >> 16) != 0) {
+						ZEND_ASSERT(0);
+						return 0;
+					}
+				} else {
+					ZEND_ASSERT(0);
+					return 0;
+				}
 				return n;
 			}
 		}

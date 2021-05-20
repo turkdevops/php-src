@@ -39,12 +39,10 @@
 #include "Optimizer/zend_call_graph.h"
 #include "Optimizer/zend_dump.h"
 
-#if defined(__x86_64__) || defined(i386) || defined(ZEND_WIN32)
-#include "jit/zend_jit_x86.h"
-#elif defined (__aarch64__)
-#include "jit/zend_jit_arm64.h"
-#else
-#error "JIT not supported on this platform"
+#if ZEND_JIT_TARGET_X86
+# include "jit/zend_jit_x86.h"
+#elif ZEND_JIT_TARGET_ARM64
+# include "jit/zend_jit_arm64.h"
 #endif
 
 #include "jit/zend_jit_internal.h"
@@ -94,10 +92,12 @@ zend_jit_globals jit_globals;
 typedef struct _zend_jit_stub {
 	const char *name;
 	int (*stub)(dasm_State **Dst);
+	uint32_t offset;
+	uint32_t adjustment;
 } zend_jit_stub;
 
-#define JIT_STUB(name) \
-	{JIT_STUB_PREFIX #name, zend_jit_ ## name ## _stub}
+#define JIT_STUB(name, offset, adjustment) \
+	{JIT_STUB_PREFIX #name, zend_jit_ ## name ## _stub, offset, adjustment}
 
 zend_ulong zend_jit_profile_counter = 0;
 int zend_jit_profile_counter_rid = -1;
@@ -130,6 +130,11 @@ static int zend_jit_trace_may_exit(const zend_op_array *op_array, const zend_op 
 static uint32_t zend_jit_trace_get_exit_point(const zend_op *to_opline, uint32_t flags);
 static const void *zend_jit_trace_get_exit_addr(uint32_t n);
 static void zend_jit_trace_add_code(const void *start, uint32_t size);
+
+#if ZEND_JIT_TARGET_ARM64
+static zend_jit_trace_info *zend_jit_get_current_trace_info(void);
+static uint32_t zend_jit_trace_find_exit_point(const void* addr);
+#endif
 
 static bool dominates(const zend_basic_block *blocks, int a, int b) {
 	while (blocks[b].level > blocks[a].level) {
@@ -206,12 +211,12 @@ static bool zend_is_commutative(zend_uchar opcode)
 #define OP2_RANGE()      OP_RANGE(ssa_op, op2)
 #define OP1_DATA_RANGE() OP_RANGE(ssa_op + 1, op1)
 
-#if defined(__x86_64__) || defined(i386) || defined(ZEND_WIN32)
-#include "dynasm/dasm_x86.h"
-#elif defined(__aarch64__)
+#if ZEND_JIT_TARGET_X86
+# include "dynasm/dasm_x86.h"
+#elif ZEND_JIT_TARGET_ARM64
 static int zend_jit_add_veneer(dasm_State *Dst, void *buffer, uint32_t ins, int *b, uint32_t *cp, ptrdiff_t offset);
-#define DASM_ADD_VENEER zend_jit_add_veneer
-#include "dynasm/dasm_arm64.h"
+# define DASM_ADD_VENEER zend_jit_add_veneer
+# include "dynasm/dasm_arm64.h"
 #endif
 
 #include "jit/zend_jit_helpers.c"
@@ -224,11 +229,11 @@ static int zend_jit_add_veneer(dasm_State *Dst, void *buffer, uint32_t ins, int 
 # include "jit/zend_jit_oprofile.c"
 #endif
 
-#if defined(__x86_64__) || defined(i386) || defined(ZEND_WIN32)
-#include "jit/zend_jit_vtune.c"
-#include "jit/zend_jit_x86.c"
-#elif defined(__aarch64__)
-#include "jit/zend_jit_arm64.c"
+#if ZEND_JIT_TARGET_X86
+# include "jit/zend_jit_vtune.c"
+# include "jit/zend_jit_x86.c"
+#elif ZEND_JIT_TARGET_ARM64
+# include "jit/zend_jit_arm64.c"
 #endif
 
 #if _WIN32
@@ -348,7 +353,9 @@ static void *dasm_link_and_encode(dasm_State             **dasm_state,
                                   const zend_op           *rt_opline,
                                   zend_lifetime_interval **ra,
                                   const char              *name,
-                                  uint32_t                 trace_num)
+                                  uint32_t                 trace_num,
+                                  uint32_t                 sp_offset,
+                                  uint32_t                 sp_adjustment)
 {
 	size_t size;
 	int ret;
@@ -410,7 +417,7 @@ static void *dasm_link_and_encode(dasm_State             **dasm_state,
 		return NULL;
 	}
 
-#ifdef __aarch64__
+#if ZEND_JIT_TARGET_ARM64
 	dasm_venners_size = 0;
 #endif
 
@@ -422,7 +429,7 @@ static void *dasm_link_and_encode(dasm_State             **dasm_state,
 		return NULL;
 	}
 
-#ifdef __aarch64__
+#if ZEND_JIT_TARGET_ARM64
 	size += dasm_venners_size;
 #endif
 
@@ -433,7 +440,7 @@ static void *dasm_link_and_encode(dasm_State             **dasm_state,
 	JIT_CACHE_FLUSH(entry, entry + size);
 
 	if (trace_num) {
-		zend_jit_trace_add_code(entry, size);
+		zend_jit_trace_add_code(entry, dasm_getpclabel(dasm_state, 1));
 	}
 
 	if (op_array && ssa) {
@@ -507,7 +514,9 @@ static void *dasm_link_and_encode(dasm_State             **dasm_state,
 					name,
 					op_array,
 					entry,
-					size);
+					size,
+					sp_adj[sp_offset],
+					sp_adj[sp_adjustment]);
 		}
 	}
 #endif
@@ -3547,7 +3556,8 @@ done:
 		}
 	}
 
-	handler = dasm_link_and_encode(&dasm_state, op_array, ssa, rt_opline, ra, NULL, 0);
+	handler = dasm_link_and_encode(&dasm_state, op_array, ssa, rt_opline, ra, NULL, 0,
+		(zend_jit_vm_kind == ZEND_VM_KIND_HYBRID) ? SP_ADJ_VM : SP_ADJ_RET, SP_ADJ_JIT);
 	if (!handler) {
 		goto jit_failure;
 	}
@@ -4103,7 +4113,8 @@ static int zend_jit_make_stubs(void)
 		if (!zend_jit_stubs[i].stub(&dasm_state)) {
 			return 0;
 		}
-		if (!dasm_link_and_encode(&dasm_state, NULL, NULL, NULL, NULL, zend_jit_stubs[i].name, 0)) {
+		if (!dasm_link_and_encode(&dasm_state, NULL, NULL, NULL, NULL, zend_jit_stubs[i].name, 0,
+				zend_jit_stubs[i].offset, zend_jit_stubs[i].adjustment)) {
 			return 0;
 		}
 	}
@@ -4407,11 +4418,11 @@ ZEND_EXT_API int zend_jit_startup(void *buf, size_t size, bool reattached)
 	}
 
 	zend_jit_unprotect();
-#ifdef __aarch64__
+#if ZEND_JIT_TARGET_ARM64
 	/* reserve space for global labels veneers */
 	dasm_labels_veneers = *dasm_ptr;
-	*dasm_ptr = (void**)*dasm_ptr + zend_lb_MAX;
-	memset(dasm_labels_veneers, 0, sizeof(void*) * zend_lb_MAX);
+	*dasm_ptr = (void**)*dasm_ptr + ZEND_MM_ALIGNED_SIZE_EX(zend_lb_MAX, DASM_ALIGNMENT);
+	memset(dasm_labels_veneers, 0, sizeof(void*) * ZEND_MM_ALIGNED_SIZE_EX(zend_lb_MAX, DASM_ALIGNMENT));
 #endif
 	/* save JIT buffer pos */
 	dasm_ptr[1] = dasm_ptr[0];
