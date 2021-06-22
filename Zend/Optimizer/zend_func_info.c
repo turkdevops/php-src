@@ -425,7 +425,7 @@ static const func_info_t func_infos[] = {
 	F1("preg_grep",				                MAY_BE_FALSE | MAY_BE_ARRAY | MAY_BE_ARRAY_KEY_ANY | MAY_BE_ARRAY_OF_REF | MAY_BE_ARRAY_OF_ANY),
 
 	/* ext/mysqli */
-	F1("mysqli_connect",						MAY_BE_NULL | MAY_BE_FALSE | MAY_BE_OBJECT),
+	F1("mysqli_connect",						MAY_BE_FALSE | MAY_BE_OBJECT),
 	F0("mysqli_close",							MAY_BE_TRUE),
 	F1("mysqli_connect_error",					MAY_BE_NULL | MAY_BE_STRING),
 	F1("mysqli_get_client_stats",				MAY_BE_ARRAY | MAY_BE_ARRAY_KEY_STRING | MAY_BE_ARRAY_OF_STRING),
@@ -451,7 +451,7 @@ static const func_info_t func_infos[] = {
 	F1("mysqli_fetch_field_direct",				MAY_BE_FALSE | MAY_BE_OBJECT),
 	F1("mysqli_fetch_lengths",					MAY_BE_FALSE | MAY_BE_ARRAY | MAY_BE_ARRAY_KEY_LONG | MAY_BE_ARRAY_OF_LONG),
 	F1("mysqli_fetch_row",						MAY_BE_NULL | MAY_BE_ARRAY | MAY_BE_ARRAY_KEY_LONG | MAY_BE_ARRAY_OF_ANY),
-	F1("mysqli_get_client_info",				MAY_BE_NULL | MAY_BE_STRING),
+	F1("mysqli_get_client_info",				MAY_BE_STRING),
 	F1("mysqli_get_host_info",					MAY_BE_STRING),
 	F1("mysqli_get_server_info",				MAY_BE_STRING),
 	F1("mysqli_info",							MAY_BE_NULL | MAY_BE_STRING),
@@ -759,6 +759,9 @@ static const func_info_t func_infos[] = {
 	F1("imagecreatefromgif",					MAY_BE_FALSE | MAY_BE_OBJECT),
 #ifdef HAVE_GD_JPG
 	F1("imagecreatefromjpeg",					MAY_BE_FALSE | MAY_BE_OBJECT),
+#endif
+#ifdef HAVE_GD_AVIF
+	F1("imagecreatefromavif",					MAY_BE_FALSE | MAY_BE_OBJECT),
 #endif
 #ifdef HAVE_GD_PNG
 	F1("imagecreatefrompng",					MAY_BE_FALSE | MAY_BE_OBJECT),

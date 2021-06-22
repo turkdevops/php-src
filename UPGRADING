@@ -60,6 +60,9 @@ PHP 8.1 UPGRADE NOTES
   . Most non-final internal methods now require overriding methods to declare a
     compatible return type, otherwise a deprecated notice is emitted during
     inheritance validation.
+    In case the return type cannot be declared for an overriding method due to
+    PHP cross-version compatibility concerns, a `#[ReturnTypeWillChange]`
+    attribute can be added to silence the deprecation notice.
     RFC: https://wiki.php.net/rfc/internal_method_return_types
 
 - Fileinfo:
@@ -100,6 +103,7 @@ PHP 8.1 UPGRADE NOTES
   . Classes extending mysqli_stmt::execute() will be required to specify the
     additional parameter now.
     RFC: https://wiki.php.net/rfc/mysqli_bind_in_execute
+  . mysqli::connect() will now return true instead of null on success.
 
 - MySQLnd:
   . The mysqlnd.fetch_copy_data ini setting has been removed. However, this
@@ -162,6 +166,7 @@ PHP 8.1 UPGRADE NOTES
 - SPL:
   . SplFileObject::fputcsv() now accepts a new "eol" argument which allow to
     define a custom eol sequence, the default remains the same and is "\n".
+  . SplFixedArray will now be JSON encoded like an array.
 
 ========================================
 2. New Features
@@ -183,6 +188,8 @@ PHP 8.1 UPGRADE NOTES
   . File uploads now provide an additional full_path key, which contains the
     full path (rather than just the basename) of the uploaded file. This is
     intended for use in conjunction with "upload webkitdirectory".
+  . It is now allowed to specify named arguments after an argument unpack, e.g.
+    foo(...$args, named: $arg).
 
 - Curl:
   . Added CURLOPT_DOH_URL option.
@@ -199,6 +206,10 @@ PHP 8.1 UPGRADE NOTES
     pm.max_spawn_rate. It allows to start number of children in a faster rate
     when dynamic pm is selected. The default value is 32 which was the previous
     hard coded value.
+
+- GD:
+  . Avif support is now available through the imagecreatefromavif() and
+    imageavif() functions, if libgd has been built with avif support.
 
 - hash:
   . The following functions have changed signatures:
@@ -286,6 +297,9 @@ PHP 8.1 UPGRADE NOTES
     Previously, -a without readline had the same behavior as calling php without
     any arguments, apart from printing an additional "Interactive mode enabled"
     message. This mode was not, in fact, interactive.
+    
+- phpdbg:
+  . Remote functionality from phpdbg has been removed.
 
 ========================================
 4. Deprecated Functionality
@@ -297,6 +311,11 @@ PHP 8.1 UPGRADE NOTES
     implement the new methods (if you only support PHP 7.4 and higher) or
     implement both (if you support older PHP versions as well).
     RFC: https://wiki.php.net/rfc/phase_out_serializable
+  . Implicit conversion of floats to integers that result in loss of precision,
+    e.g. a truncation from 1.9 to 1, is deprecated. This affects array keys,
+    int parameter and return types, and operators working on integers.
+    RFC: https://wiki.php.net/rfc/implicit-float-int-deprecate
+  . returning a non-array from __sleep will raise a warning
 
 - MySQLi:
   . The mysqli_driver::$driver_version property has been deprecated. The driver
@@ -345,6 +364,12 @@ PHP 8.1 UPGRADE NOTES
   . Added array_is_list(array $array), which will return true if the array keys are 0 .. count($array)-1 in that order.
     RFC: https://wiki.php.net/rfc/is_list
 
+- pcntl:
+  . Added pcntl_rfork for FreeBSD variants
+
+- Reflection:
+  . Added ReflectionFunctionAbstract::getClosureUsedVariables
+
 - Standard:
   . Added fsync() and fdatasync(), which instruct the operating system to
     flush its buffers to physical storage.
@@ -382,6 +407,10 @@ PHP 8.1 UPGRADE NOTES
 7. New Classes and Interfaces
 ========================================
 
+- Intl:
+  . Added IntlDatePatternGenerator to dynamically generate patterns to use with IntlDateFormatter.
+    RFC: https://wiki.php.net/rfc/intldatetimepatterngenerator
+
 ========================================
 8. Removed Extensions and SAPIs
 ========================================
@@ -397,6 +426,9 @@ PHP 8.1 UPGRADE NOTES
 - OpenSSL:
   . The OpenSSL extension now requires at least OpenSSL version 1.0.2.
 
+- Sockets:
+  . FreeBSD defines SO_ACCEPTFILTER
+
 - Standard:
   . --with-password-argon2 now uses pkg-config to detect libargon2. As such,
     an alternative libargon2 location should now be specified using
@@ -411,6 +443,9 @@ PHP 8.1 UPGRADE NOTES
     MYSQLI_REFRESH_SLAVE, in line with an upstream change in MySQL. The old
     constant is still available for backwards-compatibility reasons, but may
     be deprecated/removed in the future.
+    
+- Sockets:
+  . TCP_DEFER_ACCEPT socket option added where available.
 
 ========================================
 11. Changes to INI File Handling

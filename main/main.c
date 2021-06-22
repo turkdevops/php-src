@@ -266,12 +266,23 @@ static PHP_INI_MH(OnSetSerializePrecision)
 /* {{{ PHP_INI_MH */
 static PHP_INI_MH(OnChangeMemoryLimit)
 {
+	size_t value;
 	if (new_value) {
-		PG(memory_limit) = zend_atol(ZSTR_VAL(new_value), ZSTR_LEN(new_value));
+		value = zend_atol(ZSTR_VAL(new_value), ZSTR_LEN(new_value));
 	} else {
-		PG(memory_limit) = Z_L(1)<<30;		/* effectively, no limit */
+		value = Z_L(1)<<30;		/* effectively, no limit */
 	}
-	zend_set_memory_limit(PG(memory_limit));
+	if (zend_set_memory_limit(value) == FAILURE) {
+		/* When the memory limit is reset to the original level during deactivation, we may be
+		 * using more memory than the original limit while shutdown is still in progress.
+		 * Ignore a failure for now, and set the memory limit when the memory manager has been
+		 * shut down and the minimal amount of memory is used. */
+		if (stage != ZEND_INI_STAGE_DEACTIVATE) {
+			zend_error(E_WARNING, "Failed to set memory limit to %zd bytes (Current memory usage is %zd bytes)", value, zend_memory_usage(true));
+			return FAILURE;
+		}
+	}
+	PG(memory_limit) = value;
 	return SUCCESS;
 }
 /* }}} */
@@ -1230,6 +1241,10 @@ static ZEND_COLD void php_error_cb(int orig_type, zend_string *error_filename, c
 		PG(last_error_lineno) = error_lineno;
 	}
 
+	if (zend_alloc_in_memory_limit_error_reporting()) {
+		php_output_discard_all();
+	}
+
 	/* display/log the error if necessary */
 	if (display && ((EG(error_reporting) & type) || (type & E_CORE))
 		&& (PG(log_errors) || PG(display_errors) || (!module_initialized))) {
@@ -1778,19 +1793,7 @@ void php_request_shutdown(void *dummy)
 
 	/* 3. Flush all output buffers */
 	zend_try {
-		bool send_buffer = SG(request_info).headers_only ? 0 : 1;
-
-		if (CG(unclean_shutdown) && PG(last_error_type) == E_ERROR &&
-			(size_t)PG(memory_limit) < zend_memory_usage(1)
-		) {
-			send_buffer = 0;
-		}
-
-		if (!send_buffer) {
-			php_output_discard_all();
-		} else {
-			php_output_end_all();
-		}
+		php_output_end_all();
 	} zend_end_try();
 
 	/* 4. Reset max_execution_time (no longer executing php code after response sent) */
@@ -1852,6 +1855,10 @@ void php_request_shutdown(void *dummy)
 	zend_try {
 		shutdown_memory_manager(CG(unclean_shutdown) || !report_memleaks, 0);
 	} zend_end_try();
+
+	/* Reset memory limit, as the reset during INI_STAGE_DEACTIVATE may have failed.
+	 * At this point, no memory beyond a single chunk should be in use. */
+	zend_set_memory_limit(PG(memory_limit));
 
 	/* 16. Deactivate Zend signals */
 #ifdef ZEND_SIGNALS

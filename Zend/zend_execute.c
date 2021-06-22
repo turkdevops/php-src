@@ -180,15 +180,6 @@ ZEND_API const zend_internal_function zend_pass_function = {
 	(((size) + ZEND_VM_STACK_HEADER_SLOTS * sizeof(zval) \
 	  + ((page_size) - 1)) & ~((page_size) - 1))
 
-static zend_always_inline zend_vm_stack zend_vm_stack_new_page(size_t size, zend_vm_stack prev) {
-	zend_vm_stack page = (zend_vm_stack)emalloc(size);
-
-	page->top = ZEND_VM_STACK_ELEMENTS(page);
-	page->end = (zval*)((char*)page + size);
-	page->prev = prev;
-	return page;
-}
-
 ZEND_API void zend_vm_stack_init(void)
 {
 	EG(vm_stack_page_size) = ZEND_VM_STACK_PAGE_SIZE;
@@ -775,16 +766,18 @@ static bool zend_verify_weak_scalar_type_hint_no_sideeffect(uint32_t type_mask, 
 	double dval;
 	bool bval;
 
-	if ((type_mask & MAY_BE_LONG) && zend_parse_arg_long_weak(arg, &lval, 0)) {
+	/* Pass (uint32_t)-1 as arg_num to indicate to ZPP not to emit any deprecation notice,
+	 * this is needed because the version with side effects also uses 0 (e.g. for typed properties) */
+	if ((type_mask & MAY_BE_LONG) && zend_parse_arg_long_weak(arg, &lval, (uint32_t)-1)) {
 		return 1;
 	}
-	if ((type_mask & MAY_BE_DOUBLE) && zend_parse_arg_double_weak(arg, &dval, 0)) {
+	if ((type_mask & MAY_BE_DOUBLE) && zend_parse_arg_double_weak(arg, &dval, (uint32_t)-1)) {
 		return 1;
 	}
 	if ((type_mask & MAY_BE_STRING) && can_convert_to_string(arg)) {
 		return 1;
 	}
-	if ((type_mask & MAY_BE_BOOL) == MAY_BE_BOOL && zend_parse_arg_bool_weak(arg, &bval, 0)) {
+	if ((type_mask & MAY_BE_BOOL) == MAY_BE_BOOL && zend_parse_arg_bool_weak(arg, &bval, (uint32_t)-1)) {
 		return 1;
 	}
 	return 0;
@@ -1396,6 +1389,13 @@ static zend_never_inline void zend_binary_assign_op_typed_ref(zend_reference *re
 {
 	zval z_copy;
 
+	/* Make sure that in-place concatenation is used if the LHS is a string. */
+	if (opline->extended_value == ZEND_CONCAT && Z_TYPE(ref->val) == IS_STRING) {
+		concat_function(&ref->val, &ref->val, value);
+		ZEND_ASSERT(Z_TYPE(ref->val) == IS_STRING && "Concat should return string");
+		return;
+	}
+
 	zend_binary_op(&z_copy, &ref->val, value OPLINE_CC);
 	if (EXPECTED(zend_verify_ref_assignable_zval(ref, &z_copy, EX_USES_STRICT_TYPES()))) {
 		zval_ptr_dtor(&ref->val);
@@ -1408,6 +1408,13 @@ static zend_never_inline void zend_binary_assign_op_typed_ref(zend_reference *re
 static zend_never_inline void zend_binary_assign_op_typed_prop(zend_property_info *prop_info, zval *zptr, zval *value OPLINE_DC EXECUTE_DATA_DC)
 {
 	zval z_copy;
+
+	/* Make sure that in-place concatenation is used if the LHS is a string. */
+	if (opline->extended_value == ZEND_CONCAT && Z_TYPE_P(zptr) == IS_STRING) {
+		concat_function(zptr, zptr, value);
+		ZEND_ASSERT(Z_TYPE_P(zptr) == IS_STRING && "Concat should return string");
+		return;
+	}
 
 	zend_binary_op(&z_copy, zptr, value OPLINE_CC);
 	if (EXPECTED(zend_verify_property_type(prop_info, &z_copy, EX_USES_STRICT_TYPES()))) {
@@ -1437,7 +1444,7 @@ try_again:
 					return offset;
 				}
 				zend_illegal_string_offset(dim);
-				break;
+				return 0;
 			}
 			case IS_UNDEF:
 				ZVAL_UNDEFINED_OP2();
@@ -1453,10 +1460,10 @@ try_again:
 				goto try_again;
 			default:
 				zend_illegal_string_offset(dim);
-				break;
+				return 0;
 		}
 
-		offset = zval_get_long_func(dim);
+		offset = zval_get_long_func(dim, /* is_strict */ false);
 	} else {
 		offset = Z_LVAL_P(dim);
 	}
@@ -2119,7 +2126,7 @@ static zend_never_inline zend_uchar slow_index_convert(HashTable *ht, const zval
 			value->str = ZSTR_EMPTY_ALLOC();
 			return IS_STRING;
 		case IS_DOUBLE:
-			value->lval = zend_dval_to_lval(Z_DVAL_P(dim));
+			value->lval = zend_dval_to_lval_safe(Z_DVAL_P(dim));
 			return IS_LONG;
 		case IS_RESOURCE:
 			zend_use_resource_as_offset(dim);
@@ -2417,7 +2424,8 @@ try_string_offset:
 						return;
 					}
 					zend_illegal_string_offset(dim);
-					break;
+					ZVAL_NULL(result);
+					return;
 				}
 				case IS_UNDEF:
 					ZVAL_UNDEFINED_OP2();
@@ -2435,10 +2443,11 @@ try_string_offset:
 					goto try_string_offset;
 				default:
 					zend_illegal_string_offset(dim);
-					break;
+					ZVAL_NULL(result);
+					return;
 			}
 
-			offset = zval_get_long_func(dim);
+			offset = zval_get_long_func(dim, /* is_strict */ false);
 		} else {
 			offset = Z_LVAL_P(dim);
 		}
@@ -2529,7 +2538,7 @@ static zend_never_inline zval* ZEND_FASTCALL zend_find_array_dim_slow(HashTable 
 	zend_ulong hval;
 
 	if (Z_TYPE_P(offset) == IS_DOUBLE) {
-		hval = zend_dval_to_lval(Z_DVAL_P(offset));
+		hval = zend_dval_to_lval_safe(Z_DVAL_P(offset));
 num_idx:
 		return zend_hash_index_find(ht, hval);
 	} else if (Z_TYPE_P(offset) == IS_NULL) {
@@ -2583,7 +2592,7 @@ str_offset:
 			if (Z_TYPE_P(offset) < IS_STRING /* simple scalar types */
 					|| (Z_TYPE_P(offset) == IS_STRING /* or numeric string */
 						&& IS_LONG == is_numeric_string(Z_STRVAL_P(offset), Z_STRLEN_P(offset), NULL, NULL, 0))) {
-				lval = zval_get_long(offset);
+				lval = zval_get_long_ex(offset, /* is_strict */ true);
 				goto str_offset;
 			}
 			return 0;
@@ -2622,7 +2631,7 @@ str_offset:
 			if (Z_TYPE_P(offset) < IS_STRING /* simple scalar types */
 					|| (Z_TYPE_P(offset) == IS_STRING /* or numeric string */
 						&& IS_LONG == is_numeric_string(Z_STRVAL_P(offset), Z_STRLEN_P(offset), NULL, NULL, 0))) {
-				lval = zval_get_long(offset);
+				lval = zval_get_long_ex(offset, /* is_strict */ true);
 				goto str_offset;
 			}
 			return 1;
@@ -2653,7 +2662,7 @@ num_key:
 		key = Z_REFVAL_P(key);
 		goto try_again;
 	} else if (Z_TYPE_P(key) == IS_DOUBLE) {
-		hval = zend_dval_to_lval(Z_DVAL_P(key));
+		hval = zend_dval_to_lval_safe(Z_DVAL_P(key));
 		goto num_key;
 	} else if (Z_TYPE_P(key) == IS_FALSE) {
 		hval = 0;
@@ -3476,7 +3485,7 @@ static zend_always_inline void i_free_compiled_variables(zend_execute_data *exec
 }
 /* }}} */
 
-ZEND_API void zend_free_compiled_variables(zend_execute_data *execute_data) /* {{{ */
+ZEND_API void ZEND_FASTCALL zend_free_compiled_variables(zend_execute_data *execute_data) /* {{{ */
 {
 	i_free_compiled_variables(execute_data);
 }

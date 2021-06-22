@@ -2385,6 +2385,8 @@ static zend_class_entry* zend_accel_inheritance_cache_add(zend_class_entry *ce, 
 		return NULL;
 	}
 
+	zend_map_ptr_extend(ZCSG(map_ptr_last));
+
 #if ZEND_MM_ALIGNMENT < 8
 	/* Align to 8-byte boundary */
 	ZCG(mem) = (void*)(((zend_uintptr_t)ZCG(mem) + 7L) & ~7L);
@@ -2427,6 +2429,8 @@ static zend_class_entry* zend_accel_inheritance_cache_add(zend_class_entry *ce, 
 	entry->warnings = zend_persist_warnings(EG(num_errors), EG(errors));
 	EG(num_errors) = 0;
 	EG(errors) = NULL;
+
+	ZCSG(map_ptr_last) = CG(map_ptr_last);
 
 	zend_shared_alloc_destroy_xlat_table();
 
@@ -3171,14 +3175,8 @@ static zend_result accel_post_startup(void)
 		 && zend_jit_check_support() == SUCCESS) {
 			size_t page_size;
 
-# ifdef _WIN32
-			SYSTEM_INFO system_info;
-			GetSystemInfo(&system_info);
-			page_size = system_info.dwPageSize;
-# else
-			page_size = getpagesize();
-# endif
-			if (!page_size || (page_size & (page_size - 1))) {
+			page_size = zend_get_page_size();
+			if (!page_size && (page_size & (page_size - 1))) {
 				zend_accel_error_noreturn(ACCEL_LOG_FATAL, "Failure to initialize shared memory structures - can't get page size.");
 				abort();
 			}

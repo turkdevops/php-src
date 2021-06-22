@@ -2005,7 +2005,8 @@ PHP_METHOD(SimpleXMLElement, current)
 	}
 
 	if (Z_ISUNDEF(sxe->iter.data)) {
-		return; /* return NULL */
+		zend_throw_error(NULL, "Iterator not initialized or already consumed");
+		RETURN_THROWS();
 	}
 
 	data = &sxe->iter.data;
@@ -2025,16 +2026,18 @@ PHP_METHOD(SimpleXMLElement, key)
 	}
 
 	if (Z_ISUNDEF(sxe->iter.data)) {
-		RETURN_FALSE;
+		zend_throw_error(NULL, "Iterator not initialized or already consumed");
+		RETURN_THROWS();
 	}
 
 	intern = Z_SXEOBJ_P(&sxe->iter.data);
-	if (intern != NULL && intern->node != NULL) {
-		curnode = (xmlNodePtr)((php_libxml_node_ptr *)intern->node)->node;
-		RETURN_STRINGL((char*)curnode->name, xmlStrlen(curnode->name));
+	if (intern == NULL || intern->node == NULL) {
+		zend_throw_error(NULL, "Iterator not initialized or already consumed");
+		RETURN_THROWS();
 	}
 
-	RETURN_FALSE;
+	curnode = (xmlNodePtr)((php_libxml_node_ptr *)intern->node)->node;
+	RETURN_STRINGL((char*)curnode->name, xmlStrlen(curnode->name));
 }
 /* }}} */
 
@@ -2143,13 +2146,14 @@ sxe_object_clone(zend_object *object)
 }
 /* }}} */
 
-/* {{{ sxe_object_dtor() */
-static void sxe_object_dtor(zend_object *object)
+/* {{{ sxe_object_free_storage() */
+static void sxe_object_free_storage(zend_object *object)
 {
-	/* dtor required to cleanup iterator related data properly */
 	php_sxe_object *sxe;
 
 	sxe = php_sxe_fetch_object(object);
+
+	zend_object_std_dtor(&sxe->zo);
 
 	if (!Z_ISUNDEF(sxe->iter.data)) {
 		zval_ptr_dtor(&sxe->iter.data);
@@ -2168,17 +2172,6 @@ static void sxe_object_dtor(zend_object *object)
 		zval_ptr_dtor(&sxe->tmp);
 		ZVAL_UNDEF(&sxe->tmp);
 	}
-}
-/* }}} */
-
-/* {{{ sxe_object_free_storage() */
-static void sxe_object_free_storage(zend_object *object)
-{
-	php_sxe_object *sxe;
-
-	sxe = php_sxe_fetch_object(object);
-
-	zend_object_std_dtor(&sxe->zo);
 
 	php_libxml_node_decrement_resource((php_libxml_node_object *)sxe);
 
@@ -2688,7 +2681,6 @@ PHP_MINIT_FUNCTION(simplexml)
 
 	memcpy(&sxe_object_handlers, &std_object_handlers, sizeof(zend_object_handlers));
 	sxe_object_handlers.offset = XtOffsetOf(php_sxe_object, zo);
-	sxe_object_handlers.dtor_obj = sxe_object_dtor;
 	sxe_object_handlers.free_obj = sxe_object_free_storage;
 	sxe_object_handlers.clone_obj = sxe_object_clone;
 	sxe_object_handlers.read_property = sxe_property_read;

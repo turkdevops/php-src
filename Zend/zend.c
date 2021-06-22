@@ -774,7 +774,9 @@ static void executor_globals_ctor(zend_executor_globals *executor_globals) /* {{
 	executor_globals->exception_class = NULL;
 	executor_globals->exception = NULL;
 	executor_globals->objects_store.object_buckets = NULL;
-	executor_globals->current_fiber = NULL;
+	executor_globals->current_fiber_context = NULL;
+	executor_globals->main_fiber_context = NULL;
+	executor_globals->active_fiber = NULL;
 #ifdef ZEND_WIN32
 	zend_get_windows_version_info(&executor_globals->windows_version_info);
 #endif
@@ -1189,7 +1191,6 @@ ZEND_COLD void zenderror(const char *error) /* {{{ */
 }
 /* }}} */
 
-BEGIN_EXTERN_C()
 ZEND_API ZEND_COLD ZEND_NORETURN void _zend_bailout(const char *filename, uint32_t lineno) /* {{{ */
 {
 
@@ -1205,7 +1206,21 @@ ZEND_API ZEND_COLD ZEND_NORETURN void _zend_bailout(const char *filename, uint32
 	LONGJMP(*EG(bailout), FAILURE);
 }
 /* }}} */
-END_EXTERN_C()
+
+ZEND_API size_t zend_get_page_size(void)
+{
+#ifdef _WIN32
+	SYSTEM_INFO system_info;
+	GetSystemInfo(&system_info);
+	return system_info.dwPageSize;
+#elif defined(__FreeBSD__)
+	/* This returns the value obtained from
+	 * the auxv vector, avoiding a syscall. */
+	return getpagesize();
+#else
+	return (size_t) sysconf(_SC_PAGESIZE);
+#endif
+}
 
 ZEND_API void zend_append_version_info(const zend_extension *extension) /* {{{ */
 {
@@ -1298,7 +1313,6 @@ ZEND_API void zend_deactivate(void) /* {{{ */
 }
 /* }}} */
 
-BEGIN_EXTERN_C()
 ZEND_API void zend_message_dispatcher(zend_long message, const void *data) /* {{{ */
 {
 	if (zend_message_dispatcher_p) {
@@ -1306,7 +1320,6 @@ ZEND_API void zend_message_dispatcher(zend_long message, const void *data) /* {{
 	}
 }
 /* }}} */
-END_EXTERN_C()
 
 ZEND_API zval *zend_get_configuration_directive(zend_string *name) /* {{{ */
 {
