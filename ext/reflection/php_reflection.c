@@ -565,9 +565,10 @@ static void _class_const_string(smart_str *str, char *name, zend_class_constant 
 	}
 
 	const char *visibility = zend_visibility_string(ZEND_CLASS_CONST_FLAGS(c));
+	const char *final = ZEND_CLASS_CONST_FLAGS(c) & ZEND_ACC_FINAL ? "final " : "";
 	const char *type = zend_zval_type_name(&c->value);
-	smart_str_append_printf(str, "%sConstant [ %s %s %s ] { ",
-		indent, visibility, type, name);
+	smart_str_append_printf(str, "%sConstant [ %s%s %s %s ] { ",
+		indent, final, visibility, type, name);
 	if (Z_TYPE(c->value) == IS_ARRAY) {
 		smart_str_appends(str, "Array");
 	} else if (Z_TYPE(c->value) == IS_OBJECT) {
@@ -3831,18 +3832,25 @@ ZEND_METHOD(ReflectionClassConstant, isProtected)
 }
 /* }}} */
 
+/* Returns whether this constant is final */
+ZEND_METHOD(ReflectionClassConstant, isFinal)
+{
+	_class_constant_check_flag(INTERNAL_FUNCTION_PARAM_PASSTHRU, ZEND_ACC_FINAL);
+}
+
 /* {{{ Returns a bitfield of the access modifiers for this constant */
 ZEND_METHOD(ReflectionClassConstant, getModifiers)
 {
 	reflection_object *intern;
 	zend_class_constant *ref;
+	uint32_t keep_flags = ZEND_ACC_FINAL | ZEND_ACC_PPP_MASK;
 
 	if (zend_parse_parameters_none() == FAILURE) {
 		RETURN_THROWS();
 	}
 	GET_REFLECTION_OBJECT_PTR(ref);
 
-	RETURN_LONG(ZEND_CLASS_CONST_FLAGS(ref) & ZEND_ACC_PPP_MASK);
+	RETURN_LONG(ZEND_CLASS_CONST_FLAGS(ref) & keep_flags);
 }
 /* }}} */
 
@@ -6444,6 +6452,57 @@ ZEND_METHOD(ReflectionAttribute, __clone)
 	_DO_THROW("Cannot clone object using __clone()");
 }
 
+/* {{{ Returns a string representation */
+ZEND_METHOD(ReflectionAttribute, __toString)
+{
+	reflection_object *intern;
+	attribute_reference *attr;
+
+	if (zend_parse_parameters_none() == FAILURE) {
+		RETURN_THROWS();
+	}
+
+	GET_REFLECTION_OBJECT_PTR(attr);
+
+	smart_str str = {0};
+	smart_str_appends(&str, "Attribute [ ");
+	smart_str_append(&str, attr->data->name);
+	smart_str_appends(&str, " ]");
+
+	if (attr->data->argc > 0) {
+		smart_str_appends(&str, " {\n");
+		smart_str_append_printf(&str, "  - Arguments [%d] {\n", attr->data->argc);
+
+		for (uint32_t i = 0; i < attr->data->argc; i++) {
+			zval tmp;
+			if (FAILURE == zend_get_attribute_value(&tmp, attr->data, i, attr->scope)) {
+				RETURN_THROWS();
+			}
+
+			smart_str_append_printf(&str, "    Argument #%d [ ", i);
+			if (attr->data->args[i].name != NULL) {
+				smart_str_append(&str, attr->data->args[i].name);
+				smart_str_appends(&str, " = ");
+			}
+
+			if (format_default_value(&str, &tmp, NULL) == FAILURE) {
+				return;
+			}
+
+			smart_str_appends(&str, " ]\n");
+			zval_ptr_dtor(&tmp);
+		}
+		smart_str_appends(&str, "  }\n");
+
+		smart_str_appends(&str, "}\n");
+	} else {
+		smart_str_appendc(&str, '\n');
+	}
+
+	RETURN_STR(smart_str_extract(&str));
+}
+/* }}} */
+
 /* {{{ *	   Returns the name of the attribute */
 ZEND_METHOD(ReflectionAttribute, getName)
 {
@@ -7102,6 +7161,7 @@ PHP_MINIT_FUNCTION(reflection) /* {{{ */
 	REGISTER_REFLECTION_CLASS_CONST_LONG(class_constant, "IS_PUBLIC", ZEND_ACC_PUBLIC);
 	REGISTER_REFLECTION_CLASS_CONST_LONG(class_constant, "IS_PROTECTED", ZEND_ACC_PROTECTED);
 	REGISTER_REFLECTION_CLASS_CONST_LONG(class_constant, "IS_PRIVATE", ZEND_ACC_PRIVATE);
+	REGISTER_REFLECTION_CLASS_CONST_LONG(class_constant, "IS_FINAL", ZEND_ACC_FINAL);
 
 	reflection_extension_ptr = register_class_ReflectionExtension(reflector_ptr);
 	reflection_init_class_handlers(reflection_extension_ptr);
@@ -7112,7 +7172,7 @@ PHP_MINIT_FUNCTION(reflection) /* {{{ */
 	reflection_reference_ptr = register_class_ReflectionReference();
 	reflection_init_class_handlers(reflection_reference_ptr);
 
-	reflection_attribute_ptr = register_class_ReflectionAttribute();
+	reflection_attribute_ptr = register_class_ReflectionAttribute(reflector_ptr);
 	reflection_init_class_handlers(reflection_attribute_ptr);
 
 	reflection_enum_ptr = register_class_ReflectionEnum(reflection_class_ptr);
