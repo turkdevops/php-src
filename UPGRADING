@@ -332,6 +332,26 @@ PHP 8.1 UPGRADE NOTES
     RFC: https://wiki.php.net/rfc/implicit-float-int-deprecate
   . returning a non-array from __sleep will raise a warning
 
+- Date:
+  . The date_sunrise() and date_sunset() functions have been deprecated in
+    favor of date_sun_info().
+    RFC: https://wiki.php.net/rfc/deprecations_php_8_1
+
+- Hash:
+  . The mhash(), mhash_keygen_s2k(), mhash_count(), mhash_get_block_size() and
+    mhash_get_hash_name() functions are deprecated. Use the hash_*() APIs
+    instead.
+    RFC: https://wiki.php.net/rfc/deprecations_php_8_1
+
+- Intl:
+  . Calling IntlCalendar::roll() with bool argument is deprecated. Pass 1 and -1
+    instead of true and false respectively.
+    RFC: https://wiki.php.net/rfc/deprecations_php_8_1
+
+- Mbstring:
+  . Calling mb_check_encoding() without an argument is deprecated.
+    RFC: https://wiki.php.net/rfc/deprecations_php_8_1
+
 - MySQLi:
   . The mysqli_driver::$driver_version property has been deprecated. The driver
     version is meaningless as it hasn't been updated in more than a decade. Use
@@ -344,6 +364,15 @@ PHP 8.1 UPGRADE NOTES
 - PDO:
   . The PDO::FETCH_SERIALIZE mode has been deprecated.
     RFC: https://wiki.php.net/rfc/phase_out_serializable
+
+- Standard:
+  . Calling key(), current(), next(), prev(), reset(), or end() on objects
+    is deprecated. Instead cast the object to array first, or make use of
+    ArrayIterator.
+    RFC: https://wiki.php.net/rfc/deprecations_php_8_1
+  . The FILE_BINARY and FILE_TEXT constants are deprecated. They already had
+    no effect previously.
+    RFC: https://wiki.php.net/rfc/deprecations_php_8_1
 
 ========================================
 5. Changed Functions
@@ -370,6 +399,12 @@ PHP 8.1 UPGRADE NOTES
 - PDO ODBC:
   . PDO::getAttributes() with PDO::ATTR_SERVER_INFO and PDO::ATTR_SERVER_VERSION
     now return values instead of throwing PDOException.
+
+- Reflection:
+  . ReflectionProperty::setAccessible() and ReflectionMethod::setAccessible()
+    no longer have an effect. Properties and methods are always considered
+    accessible through reflection.
+    RFC: https://wiki.php.net/rfc/make-reflection-setaccessible-no-op
 
 ========================================
 6. New Functions
