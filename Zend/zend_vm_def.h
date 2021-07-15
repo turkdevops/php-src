@@ -2379,18 +2379,7 @@ ZEND_VM_C_LABEL(assign_object):
 					zend_property_info *prop_info = (zend_property_info*) CACHED_PTR_EX(cache_slot + 2);
 
 					if (UNEXPECTED(prop_info != NULL)) {
-						zend_uchar orig_type = IS_UNDEF;
-
-						if (OP_DATA_TYPE == IS_CONST) {
-							orig_type = Z_TYPE_P(value);
-						}
-
 						value = zend_assign_to_typed_prop(prop_info, property_val, value EXECUTE_DATA_CC);
-
-						/* will remain valid, thus no need to check prop_info in future here */
-						if (OP_DATA_TYPE == IS_CONST && Z_TYPE_P(value) == orig_type) {
-							CACHE_PTR_EX(cache_slot + 2, NULL);
-						}
 						ZEND_VM_C_GOTO(free_and_exit_assign_obj);
 					} else {
 ZEND_VM_C_LABEL(fast_assign_obj):
@@ -9229,6 +9218,24 @@ ZEND_VM_HANDLER(167, ZEND_COPY_TMP, TMPVAR, UNUSED)
 	zval *value = GET_OP1_ZVAL_PTR(BP_VAR_R);
 	zval *result = EX_VAR(opline->result.var);
 	ZVAL_COPY(result, value);
+	ZEND_VM_NEXT_OPCODE();
+}
+
+ZEND_VM_HANDLER(202, ZEND_CALLABLE_CONVERT, UNUSED, UNUSED)
+{
+	USE_OPLINE
+	zend_execute_data *call = EX(call);
+
+	zend_closure_from_frame(EX_VAR(opline->result.var), call);
+
+	if (ZEND_CALL_INFO(call) & ZEND_CALL_RELEASE_THIS) {
+		OBJ_RELEASE(Z_OBJ(call->This));
+	}
+
+	EX(call) = call->prev_execute_data;
+
+	zend_vm_stack_free_call_frame(call);
+
 	ZEND_VM_NEXT_OPCODE();
 }
 
