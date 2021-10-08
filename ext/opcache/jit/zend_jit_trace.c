@@ -1769,13 +1769,6 @@ static zend_ssa *zend_jit_trace_build_tssa(zend_jit_trace_rec *trace_buffer, uin
 					break;
 				case ZEND_JMPZ:
 				case ZEND_JMPNZ:
-					if (/*opline > op_array->opcodes + ssa->cfg.blocks[b].start && ??? */
-					    opline->op1_type == IS_TMP_VAR &&
-					    ((opline-1)->result_type & (IS_SMART_BRANCH_JMPZ|IS_SMART_BRANCH_JMPNZ)) != 0) {
-						/* smart branch */
-						break;
-					}
-					ZEND_FALLTHROUGH;
 				case ZEND_JMPZNZ:
 				case ZEND_JMPZ_EX:
 				case ZEND_JMPNZ_EX:
@@ -3064,7 +3057,9 @@ static zend_lifetime_interval** zend_jit_trace_allocate_registers(zend_jit_trace
 
 		while (phi) {
 			if (intervals[phi->ssa_var]) {
-				if (intervals[phi->sources[1]]) {
+				if (intervals[phi->sources[1]]
+				 && (ssa->var_info[phi->sources[1]].type & MAY_BE_ANY) ==
+						(ssa->var_info[phi->ssa_var].type & MAY_BE_ANY)) {
 					intervals[phi->sources[1]]->hint = intervals[phi->ssa_var];
 				}
 			}
@@ -3687,7 +3682,7 @@ static void zend_jit_trace_update_condition_ranges(const zend_op *opline, const 
 	}
 }
 
-static bool zend_jit_may_skip_comparison(const zend_op *opline, const zend_ssa_op *ssa_op, const zend_ssa *ssa, const zend_op **ssa_opcodes)
+static bool zend_jit_may_skip_comparison(const zend_op *opline, const zend_ssa_op *ssa_op, const zend_ssa *ssa, const zend_op **ssa_opcodes, const zend_op_array *op_array)
 {
 	zend_uchar prev_opcode;
 
@@ -3696,18 +3691,23 @@ static bool zend_jit_may_skip_comparison(const zend_op *opline, const zend_ssa_o
 	 && Z_LVAL_P(RT_CONSTANT(opline, opline->op1)) == 0) {
 		if (ssa_op->op2_use >= 0) {
 			if ((ssa_op-1)->op1_def == ssa_op->op2_use) {
-				prev_opcode = ssa_opcodes[(ssa_op - ssa->ops) - 1]->opcode;
+				ssa_op--;
+				opline = ssa_opcodes[ssa_op - ssa->ops];
+				prev_opcode = opline->opcode;
 				if (prev_opcode == ZEND_PRE_INC
 				 || prev_opcode == ZEND_PRE_DEC
 				 || prev_opcode == ZEND_POST_INC
 				 || prev_opcode == ZEND_POST_DEC) {
-					return 1;
+					return (OP1_INFO() & ((MAY_BE_UNDEF|MAY_BE_ANY|MAY_BE_REF)-MAY_BE_LONG)) == 0;
 				}
 			} else if ((ssa_op-1)->result_def == ssa_op->op2_use) {
-				prev_opcode = ssa_opcodes[(ssa_op - ssa->ops) - 1]->opcode;
+				ssa_op--;
+				opline = ssa_opcodes[ssa_op - ssa->ops];
+				prev_opcode = opline->opcode;
 				if (prev_opcode == ZEND_ADD
 				 || prev_opcode == ZEND_SUB) {
-					return 1;
+					return (OP1_INFO() & ((MAY_BE_UNDEF|MAY_BE_ANY|MAY_BE_REF)-MAY_BE_LONG)) == 0 &&
+						(OP2_INFO() & ((MAY_BE_UNDEF|MAY_BE_ANY|MAY_BE_REF)-MAY_BE_LONG)) == 0;
 				}
 			}
 		}
@@ -3716,18 +3716,23 @@ static bool zend_jit_may_skip_comparison(const zend_op *opline, const zend_ssa_o
 	 && Z_LVAL_P(RT_CONSTANT(opline, opline->op2)) == 0) {
 		if (ssa_op->op1_use >= 0) {
 			if ((ssa_op-1)->op1_def == ssa_op->op1_use) {
-				prev_opcode = ssa_opcodes[(ssa_op - ssa->ops) - 1]->opcode;
+				ssa_op--;
+				opline = ssa_opcodes[ssa_op - ssa->ops];
+				prev_opcode = opline->opcode;
 				if (prev_opcode == ZEND_PRE_INC
 				 || prev_opcode == ZEND_PRE_DEC
 				 || prev_opcode == ZEND_POST_INC
 				 || prev_opcode == ZEND_POST_DEC) {
-					return 1;
+					return (OP1_INFO() & ((MAY_BE_UNDEF|MAY_BE_ANY|MAY_BE_REF)-MAY_BE_LONG)) == 0;
 				}
 			} else if ((ssa_op-1)->result_def == ssa_op->op1_use) {
-				prev_opcode = ssa_opcodes[(ssa_op - ssa->ops) - 1]->opcode;
+				ssa_op--;
+				opline = ssa_opcodes[ssa_op - ssa->ops];
+				prev_opcode = opline->opcode;
 				if (prev_opcode == ZEND_ADD
 				 || prev_opcode == ZEND_SUB) {
-					return 1;
+					return (OP1_INFO() & ((MAY_BE_UNDEF|MAY_BE_ANY|MAY_BE_REF)-MAY_BE_LONG)) == 0 &&
+						(OP2_INFO() & ((MAY_BE_UNDEF|MAY_BE_ANY|MAY_BE_REF)-MAY_BE_LONG)) == 0;
 				}
 			}
 		}
@@ -4982,9 +4987,9 @@ static const void *zend_jit_trace(zend_jit_trace_rec *trace_buffer, uint32_t par
 						op2_info = OP2_INFO();
 						skip_comparison =
 							ssa_op != ssa->ops &&
-							(op1_info & (MAY_BE_ANY|MAY_BE_UNDEF)) == MAY_BE_LONG &&
-							(op2_info & (MAY_BE_ANY|MAY_BE_UNDEF)) == MAY_BE_LONG &&
-							zend_jit_may_skip_comparison(opline, ssa_op, ssa, ssa_opcodes);
+							(op1_info & (MAY_BE_ANY|MAY_BE_UNDEF|MAY_BE_GUARD)) == MAY_BE_LONG &&
+							(op2_info & (MAY_BE_ANY|MAY_BE_UNDEF|MAY_BE_GUARD)) == MAY_BE_LONG &&
+							zend_jit_may_skip_comparison(opline, ssa_op, ssa, ssa_opcodes, op_array);
 						CHECK_OP1_TRACE_TYPE();
 						CHECK_OP2_TRACE_TYPE();
 						if ((opline->result_type & (IS_SMART_BRANCH_JMPZ|IS_SMART_BRANCH_JMPNZ)) != 0) {
@@ -5030,9 +5035,9 @@ static const void *zend_jit_trace(zend_jit_trace_rec *trace_buffer, uint32_t par
 						op2_info = OP2_INFO();
 						skip_comparison =
 							ssa_op != ssa->ops &&
-							(op1_info & (MAY_BE_ANY|MAY_BE_UNDEF)) == MAY_BE_LONG &&
-							(op2_info & (MAY_BE_ANY|MAY_BE_UNDEF)) == MAY_BE_LONG &&
-							zend_jit_may_skip_comparison(opline, ssa_op, ssa, ssa_opcodes);
+							(op1_info & (MAY_BE_ANY|MAY_BE_UNDEF|MAY_BE_GUARD)) == MAY_BE_LONG &&
+							(op2_info & (MAY_BE_ANY|MAY_BE_UNDEF|MAY_BE_GUARD)) == MAY_BE_LONG &&
+							zend_jit_may_skip_comparison(opline, ssa_op, ssa, ssa_opcodes, op_array);
 						CHECK_OP1_TRACE_TYPE();
 						CHECK_OP2_TRACE_TYPE();
 						if ((opline->result_type & (IS_SMART_BRANCH_JMPZ|IS_SMART_BRANCH_JMPNZ)) != 0) {
@@ -5211,13 +5216,6 @@ static const void *zend_jit_trace(zend_jit_trace_rec *trace_buffer, uint32_t par
 						goto done;
 					case ZEND_JMPZ:
 					case ZEND_JMPNZ:
-						if (/*opline > op_array->opcodes + ssa->cfg.blocks[b].start && ??? */
-						    opline->op1_type == IS_TMP_VAR &&
-						    ((opline-1)->result_type & (IS_SMART_BRANCH_JMPZ|IS_SMART_BRANCH_JMPNZ)) != 0) {
-							/* smart branch */
-							break;
-						}
-						ZEND_FALLTHROUGH;
 					case ZEND_JMPZNZ:
 					case ZEND_JMPZ_EX:
 					case ZEND_JMPNZ_EX:

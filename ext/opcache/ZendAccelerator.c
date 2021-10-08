@@ -3214,7 +3214,7 @@ static zend_result accel_post_startup(void)
 				break;
 			case FAILED_REATTACHED:
 				accel_startup_ok = 0;
-				zend_accel_error_noreturn(ACCEL_LOG_FATAL, "Failure to initialize shared memory structures - can not reattach to exiting shared memory.");
+				zend_accel_error_noreturn(ACCEL_LOG_FATAL, "Failure to initialize shared memory structures - cannot reattach to exiting shared memory.");
 				return SUCCESS;
 				break;
 #if ENABLE_FILE_CACHE_FALLBACK
@@ -4753,6 +4753,7 @@ static int accel_finish_startup(void)
 			if (accel_preload(ZCG(accel_directives).preload, in_child) != SUCCESS) {
 				ret = FAILURE;
 			}
+			preload_flush(NULL);
 
 			orig_report_memleaks = PG(report_memleaks);
 			PG(report_memleaks) = 0;
