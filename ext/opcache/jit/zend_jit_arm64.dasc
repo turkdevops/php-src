@@ -1463,7 +1463,8 @@ static bool logical_immediate_p(uint64_t value, uint32_t reg_size)
 // arg1 "zval" should be in FCARG1x
 |.macro ZVAL_DTOR_FUNC, var_info, opline, tmp_reg
 ||	do {
-||		if (has_concrete_type((var_info) & (MAY_BE_STRING|MAY_BE_ARRAY|MAY_BE_OBJECT|MAY_BE_RESOURCE|MAY_BE_INDIRECT))) {
+||		if (!((var_info) & MAY_BE_GUARD)
+||		 && has_concrete_type((var_info) & (MAY_BE_STRING|MAY_BE_ARRAY|MAY_BE_OBJECT|MAY_BE_RESOURCE|MAY_BE_INDIRECT))) {
 ||			zend_uchar type = concrete_type((var_info) & (MAY_BE_STRING|MAY_BE_ARRAY|MAY_BE_OBJECT|MAY_BE_RESOURCE));
 ||			if (type == IS_STRING && !ZEND_DEBUG) {
 |				EXT_CALL _efree, tmp_reg
@@ -12146,7 +12147,11 @@ static int zend_jit_fetch_obj(dasm_State          **Dst,
 			|1:
 			|	ldr TMP1w, [FCARG2x, #offsetof(zend_property_info, flags)]
 			|	tst TMP1w, #ZEND_ACC_READONLY
-			|	beq >3
+			if (flags) {
+				|	beq >3
+			} else {
+				|	beq >4
+			}
 			|	IF_NOT_TYPE REG2w, IS_OBJECT_EX, >2
 			|	GET_Z_PTR REG2, FCARG1x
 			|	GC_ADDREF REG2, TMP1w
@@ -12172,6 +12177,7 @@ static int zend_jit_fetch_obj(dasm_State          **Dst,
 				ZEND_ASSERT(flags == 0);
 			}
 			|.code
+			|4:
 		}
 	} else {
 		prop_addr = ZEND_ADDR_MEM_ZVAL(ZREG_FCARG1, prop_info->offset);
@@ -12831,9 +12837,15 @@ static int zend_jit_incdec_obj(dasm_State          **Dst,
 			 && !ZEND_TYPE_IS_SET(prop_info->type)
 			 && (res_info & MAY_BE_GUARD)
 			 && (res_info & MAY_BE_LONG)) {
-				int32_t exit_point = zend_jit_trace_get_exit_point(opline + 1, 0);
-				const void *exit_addr = zend_jit_trace_get_exit_addr(exit_point);
+				zend_jit_trace_stack *stack = JIT_G(current_frame)->stack;
+				uint32_t old_res_info = STACK_INFO(stack, EX_VAR_TO_NUM(opline->result.var));
+				int32_t exit_point;
+				const void *exit_addr;
 
+				SET_STACK_TYPE(stack, EX_VAR_TO_NUM(opline->result.var), IS_DOUBLE, 0);
+				exit_point = zend_jit_trace_get_exit_point(opline + 1, 0);
+				exit_addr = zend_jit_trace_get_exit_addr(exit_point);
+				SET_STACK_INFO(stack, EX_VAR_TO_NUM(opline->result.var), old_res_info);
 				ssa->var_info[ssa_op->result_def].type = res_info & ~MAY_BE_GUARD;
 				|	b &exit_addr
 				|.code
@@ -14611,6 +14623,7 @@ static bool zend_jit_fetch_reference(dasm_State **Dst, const zend_op *opline, ui
 		var_info &= ~MAY_BE_REF;
 		*var_info_ptr = var_info;
 	}
+	*var_info_ptr |= MAY_BE_GUARD; /* prevent generation of specialized zval dtor */
 
 	return 1;
 }
