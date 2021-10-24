@@ -551,6 +551,7 @@ struct _zend_execute_data {
 #define ZEND_CALL_OBSERVED           (1 << 28) /* "fcall_begin" observer handler may set this flag */
                                                /* to prevent optimization in RETURN handler and    */
                                                /* keep all local variables for "fcall_end" handler */
+#define ZEND_CALL_JIT_RESERVED       (1 << 29) /* reserved for tracing JIT */
 #define ZEND_CALL_SEND_ARG_BY_REF    (1u << 31)
 
 #define ZEND_CALL_NESTED_FUNCTION    (ZEND_CALL_FUNCTION | ZEND_CALL_NESTED)
@@ -801,7 +802,6 @@ ZEND_API zend_result do_bind_class(zval *lcname, zend_string *lc_parent_name);
 void zend_resolve_goto_label(zend_op_array *op_array, zend_op *opline);
 
 ZEND_API void function_add_ref(zend_function *function);
-void zend_init_static_variables_map_ptr(zend_op_array *op_array);
 zend_string *zval_make_interned_string(zval *zv);
 
 #define INITIAL_OP_ARRAY_SIZE 64
@@ -960,6 +960,13 @@ ZEND_API zend_string *zend_type_to_string(zend_type type);
 #define ZEND_FETCH_REF			1
 #define ZEND_FETCH_DIM_WRITE	2
 #define ZEND_FETCH_OBJ_FLAGS	3
+
+/* Used to mark what kind of operation a writing FETCH_DIM is used in,
+ * to produce a more precise error on incorrect string offset use. */
+#define ZEND_FETCH_DIM_REF 1
+#define ZEND_FETCH_DIM_DIM 2
+#define ZEND_FETCH_DIM_OBJ 3
+#define ZEND_FETCH_DIM_INCDEC 4
 
 #define ZEND_ISEMPTY			(1<<0)
 

@@ -309,10 +309,9 @@ static void zend_accel_do_delayed_early_binding(
 {
 	ZEND_ASSERT(!ZEND_MAP_PTR(op_array->run_time_cache));
 	ZEND_ASSERT(op_array->fn_flags & ZEND_ACC_HEAP_RT_CACHE);
-	void *ptr = emalloc(op_array->cache_size + sizeof(void*));
-	ZEND_MAP_PTR_INIT(op_array->run_time_cache, ptr);
-	char *run_time_cache = (char *) ptr + sizeof(void*);
-	ZEND_MAP_PTR_SET(op_array->run_time_cache, run_time_cache);
+	void *run_time_cache = emalloc(op_array->cache_size);
+
+	ZEND_MAP_PTR_INIT(op_array->run_time_cache, run_time_cache);
 	memset(run_time_cache, 0, op_array->cache_size);
 
 	zend_string *orig_compiled_filename = CG(compiled_filename);
@@ -321,17 +320,20 @@ static void zend_accel_do_delayed_early_binding(
 	CG(in_compilation) = 1;
 	for (uint32_t i = 0; i < persistent_script->num_early_bindings; i++) {
 		zend_early_binding *early_binding = &persistent_script->early_bindings[i];
-		zval *zv = zend_hash_find_known_hash(EG(class_table), early_binding->rtd_key);
-		if (zv) {
-			zend_class_entry *ce = Z_CE_P(zv);
-			zend_class_entry *parent_ce =
-				zend_hash_find_ex_ptr(EG(class_table), early_binding->lc_parent_name, 1);
-			if (parent_ce) {
-				ce = zend_try_early_bind(ce, parent_ce, early_binding->lcname, zv);
-				if (ce && early_binding->cache_slot != (uint32_t) -1) {
-					*(void**)(run_time_cache + early_binding->cache_slot) = ce;
+		zend_class_entry *ce = zend_hash_find_ex_ptr(EG(class_table), early_binding->lcname, 1);
+		if (!ce) {
+			zval *zv = zend_hash_find_known_hash(EG(class_table), early_binding->rtd_key);
+			if (zv) {
+				zend_class_entry *orig_ce = Z_CE_P(zv);
+				zend_class_entry *parent_ce =
+					zend_hash_find_ex_ptr(EG(class_table), early_binding->lc_parent_name, 1);
+				if (parent_ce) {
+					ce = zend_try_early_bind(orig_ce, parent_ce, early_binding->lcname, zv);
 				}
 			}
+		}
+		if (ce && early_binding->cache_slot != (uint32_t) -1) {
+			*(void**)((char*)run_time_cache + early_binding->cache_slot) = ce;
 		}
 	}
 	CG(compiled_filename) = orig_compiled_filename;
