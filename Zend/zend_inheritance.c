@@ -2437,8 +2437,7 @@ static void add_property_compatibility_obligation(
 
 static void resolve_delayed_variance_obligations(zend_class_entry *ce);
 
-static int check_variance_obligation(zval *zv) {
-	variance_obligation *obligation = Z_PTR_P(zv);
+static void check_variance_obligation(variance_obligation *obligation) {
 	if (obligation->type == OBLIGATION_DEPENDENCY) {
 		zend_class_entry *dependency_ce = obligation->dependency_ce;
 		if (dependency_ce->ce_flags & ZEND_ACC_UNRESOLVED_VARIANCE) {
@@ -2449,18 +2448,11 @@ static int check_variance_obligation(zval *zv) {
 			resolve_delayed_variance_obligations(dependency_ce);
 			CG(current_linking_class) = orig_linking_class;
 		}
-		if (!(dependency_ce->ce_flags & ZEND_ACC_LINKED)) {
-			return ZEND_HASH_APPLY_KEEP;
-		}
 	} else if (obligation->type == OBLIGATION_COMPATIBILITY) {
 		inheritance_status status = zend_do_perform_implementation_check(
 			&obligation->child_fn, obligation->child_scope,
 			&obligation->parent_fn, obligation->parent_scope);
 		if (UNEXPECTED(status != INHERITANCE_SUCCESS)) {
-			if (EXPECTED(status == INHERITANCE_UNRESOLVED)) {
-				return ZEND_HASH_APPLY_KEEP;
-			}
-			ZEND_ASSERT(status == INHERITANCE_ERROR);
 			emit_incompatible_method_error(
 				&obligation->child_fn, obligation->child_scope,
 				&obligation->parent_fn, obligation->parent_scope, status);
@@ -2471,38 +2463,37 @@ static int check_variance_obligation(zval *zv) {
 		inheritance_status status =
 			property_types_compatible(obligation->parent_prop, obligation->child_prop);
 		if (status != INHERITANCE_SUCCESS) {
-			if (status == INHERITANCE_UNRESOLVED) {
-				return ZEND_HASH_APPLY_KEEP;
-			}
-			ZEND_ASSERT(status == INHERITANCE_ERROR);
 			emit_incompatible_property_error(obligation->child_prop, obligation->parent_prop);
 		}
 	}
-	return ZEND_HASH_APPLY_REMOVE;
 }
 
 static void load_delayed_classes(zend_class_entry *ce) {
 	HashTable *delayed_autoloads = CG(delayed_autoloads);
-	zend_string *name;
-
 	if (!delayed_autoloads) {
 		return;
 	}
 
-	/* Take ownership of this HT, to avoid concurrent modification during autoloading. */
-	CG(delayed_autoloads) = NULL;
-
-	ZEND_HASH_MAP_FOREACH_STR_KEY(delayed_autoloads, name) {
+	/* Autoloading can trigger linking of another class, which may register new delayed autoloads.
+	 * For that reason, this code uses a loop that pops and loads the first element of the HT. If
+	 * this triggers linking, then the remaining classes may get loaded when linking the newly
+	 * loaded class. This is important, as otherwise necessary dependencies may not be available
+	 * if the new class is lower in the hierarchy than the current one. */
+	HashPosition pos = 0;
+	zend_string *name;
+	zend_ulong idx;
+	while (zend_hash_get_current_key_ex(delayed_autoloads, &name, &idx, &pos)
+			!= HASH_KEY_NON_EXISTENT) {
+		zend_string_addref(name);
+		zend_hash_del(delayed_autoloads, name);
 		zend_lookup_class(name);
+		zend_string_release(name);
 		if (EG(exception)) {
 			zend_exception_uncaught_error(
 				"During inheritance of %s, while autoloading %s",
 				ZSTR_VAL(ce->name), ZSTR_VAL(name));
 		}
-	} ZEND_HASH_FOREACH_END();
-
-	zend_hash_destroy(delayed_autoloads);
-	FREE_HASHTABLE(delayed_autoloads);
+	}
 }
 
 static void resolve_delayed_variance_obligations(zend_class_entry *ce) {
@@ -2513,44 +2504,11 @@ static void resolve_delayed_variance_obligations(zend_class_entry *ce) {
 	obligations = zend_hash_index_find_ptr(all_obligations, num_key);
 	ZEND_ASSERT(obligations != NULL);
 
-	zend_hash_apply(obligations, check_variance_obligation);
-	if (zend_hash_num_elements(obligations) == 0) {
-		ce->ce_flags &= ~ZEND_ACC_UNRESOLVED_VARIANCE;
-		ce->ce_flags |= ZEND_ACC_LINKED;
-		zend_hash_index_del(all_obligations, num_key);
-	}
-}
-
-static void report_variance_errors(zend_class_entry *ce) {
-	HashTable *all_obligations = CG(delayed_variance_obligations), *obligations;
 	variance_obligation *obligation;
-	zend_ulong num_key = (zend_ulong) (uintptr_t) ce;
-
-	ZEND_ASSERT(all_obligations != NULL);
-	obligations = zend_hash_index_find_ptr(all_obligations, num_key);
-	ZEND_ASSERT(obligations != NULL);
-
-	ZEND_HASH_PACKED_FOREACH_PTR(obligations, obligation) {
-		if (obligation->type == OBLIGATION_COMPATIBILITY) {
-			/* Just used to populate the delayed_autoloads table,
-			 * which will be used when printing the "unresolved" error. */
-			inheritance_status status = zend_do_perform_implementation_check(
-				&obligation->child_fn, obligation->child_scope,
-				&obligation->parent_fn, obligation->parent_scope);
-			ZEND_ASSERT(status == INHERITANCE_UNRESOLVED);
-			emit_incompatible_method_error(
-				&obligation->child_fn, obligation->child_scope,
-				&obligation->parent_fn, obligation->parent_scope, status);
-		} else if (obligation->type == OBLIGATION_PROPERTY_COMPATIBILITY) {
-			emit_incompatible_property_error(obligation->child_prop, obligation->parent_prop);
-		} else {
-			/* Report variance errors of the dependency, which prevent it from being linked. */
-			report_variance_errors(obligation->dependency_ce);
-		}
+	ZEND_HASH_FOREACH_PTR(obligations, obligation) {
+		check_variance_obligation(obligation);
 	} ZEND_HASH_FOREACH_END();
 
-	/* Only warnings were thrown above -- that means that there are incompatibilities, but only
-	 * ones that we permit. Mark all classes with open obligations as fully linked. */
 	ce->ce_flags &= ~ZEND_ACC_UNRESOLVED_VARIANCE;
 	ce->ce_flags |= ZEND_ACC_LINKED;
 	zend_hash_index_del(all_obligations, num_key);
@@ -2910,10 +2868,6 @@ ZEND_API zend_class_entry *zend_do_link_class(zend_class_entry *ce, zend_string 
 		load_delayed_classes(ce);
 		if (ce->ce_flags & ZEND_ACC_UNRESOLVED_VARIANCE) {
 			resolve_delayed_variance_obligations(ce);
-			if (!(ce->ce_flags & ZEND_ACC_LINKED)) {
-				CG(current_linking_class) = orig_linking_class;
-				report_variance_errors(ce);
-			}
 		}
 		if (ce->ce_flags & ZEND_ACC_CACHEABLE) {
 			ce->ce_flags &= ~ZEND_ACC_CACHEABLE;
