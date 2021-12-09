@@ -146,25 +146,24 @@ DBA_FETCH_FUNC(db4)
 {
 	dba_db4_data *dba = info->dbf;
 	DBT gval;
-	char *new = NULL;
 	DBT gkey;
+	zend_string *fetched_value = NULL;
 
 	memset(&gkey, 0, sizeof(gkey));
-	gkey.data = (char *) key;
-	gkey.size = keylen;
+	gkey.data = ZSTR_VAL(key);
+	gkey.size = ZSTR_LEN(key);
 
 	memset(&gval, 0, sizeof(gval));
 	if (info->flags & DBA_PERSISTENT) {
 		gval.flags |= DB_DBT_MALLOC;
 	}
 	if (!dba->dbp->get(dba->dbp, NULL, &gkey, &gval, 0)) {
-		if (newlen) *newlen = gval.size;
-		new = estrndup(gval.data, gval.size);
+		fetched_value = zend_string_init(gval.data, gval.size, /* persistent */ false);
 		if (info->flags & DBA_PERSISTENT) {
 			free(gval.data);
 		}
 	}
-	return new;
+	return fetched_value;
 }
 
 DBA_UPDATE_FUNC(db4)
@@ -174,12 +173,12 @@ DBA_UPDATE_FUNC(db4)
 	DBT gkey;
 
 	memset(&gkey, 0, sizeof(gkey));
-	gkey.data = (char *) key;
-	gkey.size = keylen;
+	gkey.data = ZSTR_VAL(key);
+	gkey.size = ZSTR_LEN(key);
 
 	memset(&gval, 0, sizeof(gval));
-	gval.data = (char *) val;
-	gval.size = vallen;
+	gval.data = ZSTR_VAL(val);
+	gval.size = ZSTR_LEN(val);
 
 	if (!dba->dbp->put(dba->dbp, NULL, &gkey, &gval,
 				mode == 1 ? DB_NOOVERWRITE : 0)) {
@@ -195,8 +194,8 @@ DBA_EXISTS_FUNC(db4)
 	DBT gkey;
 
 	memset(&gkey, 0, sizeof(gkey));
-	gkey.data = (char *) key;
-	gkey.size = keylen;
+	gkey.data = ZSTR_VAL(key);
+	gkey.size = ZSTR_LEN(key);
 
 	memset(&gval, 0, sizeof(gval));
 
@@ -219,8 +218,8 @@ DBA_DELETE_FUNC(db4)
 	DBT gkey;
 
 	memset(&gkey, 0, sizeof(gkey));
-	gkey.data = (char *) key;
-	gkey.size = keylen;
+	gkey.data = ZSTR_VAL(key);
+	gkey.size = ZSTR_LEN(key);
 
 	return dba->dbp->del(dba->dbp, NULL, &gkey, 0) ? FAILURE : SUCCESS;
 }
@@ -238,15 +237,14 @@ DBA_FIRSTKEY_FUNC(db4)
 		return NULL;
 	}
 
-	/* we should introduce something like PARAM_PASSTHRU... */
-	return dba_nextkey_db4(info, newlen);
+	return dba_nextkey_db4(info);
 }
 
 DBA_NEXTKEY_FUNC(db4)
 {
 	dba_db4_data *dba = info->dbf;
 	DBT gkey, gval;
-	char *nkey = NULL;
+	zend_string *key = NULL;
 
 	memset(&gkey, 0, sizeof(gkey));
 	memset(&gval, 0, sizeof(gval));
@@ -257,8 +255,7 @@ DBA_NEXTKEY_FUNC(db4)
 	}
 	if (dba->cursor && dba->cursor->c_get(dba->cursor, &gkey, &gval, DB_NEXT) == 0) {
 		if (gkey.data) {
-			nkey = estrndup(gkey.data, gkey.size);
-			if (newlen) *newlen = gkey.size;
+			key = zend_string_init(gkey.data, gkey.size, /* persistent */ false);
 		}
 		if (info->flags & DBA_PERSISTENT) {
 			if (gkey.data) {
@@ -270,7 +267,7 @@ DBA_NEXTKEY_FUNC(db4)
 		}
 	}
 
-	return nkey;
+	return key;
 }
 
 DBA_OPTIMIZE_FUNC(db4)

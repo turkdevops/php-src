@@ -279,9 +279,6 @@ static void dba_close(dba_info *info)
 			php_stream_close(info->lock.fp);
 		}
 	}
-	if (info->lock.name) {
-		pefree(info->lock.name, info->flags&DBA_PERSISTENT);
-	}
 	pefree(info, info->flags&DBA_PERSISTENT);
 }
 /* }}} */
@@ -427,8 +424,7 @@ static void php_dba_update(INTERNAL_FUNCTION_PARAMETERS, int mode)
 		}
 	}
 
-	RETVAL_BOOL(info->hnd->update(info, ZSTR_VAL(key_str), ZSTR_LEN(key_str),
-		ZSTR_VAL(value), ZSTR_LEN(value), mode) == SUCCESS);
+	RETVAL_BOOL(info->hnd->update(info, key_str, value, mode) == SUCCESS);
 	DBA_RELEASE_HT_KEY_CREATION();
 }
 /* }}} */
@@ -754,15 +750,13 @@ restart:
 				/* do not log errors for .lck file while in read only mode on .lck file */
 				lock_file_mode = "rb";
 				info->lock.fp = php_stream_open_wrapper(lock_name, lock_file_mode, STREAM_MUST_SEEK|IGNORE_PATH|persistent_flag, &opened_path);
+				if (opened_path) {
+					zend_string_release_ex(opened_path, 0);
+				}
 			}
 			if (!info->lock.fp) {
 				/* when not in read mode or failed to open .lck file read only. now try again in create(write) mode and log errors */
 				lock_file_mode = "a+b";
-			} else {
-				if (opened_path) {
-					info->lock.name = pestrndup(ZSTR_VAL(opened_path), ZSTR_LEN(opened_path), persistent);
-					zend_string_release_ex(opened_path, 0);
-				}
 			}
 		}
 		if (!info->lock.fp) {
@@ -773,8 +767,6 @@ restart:
 					pefree(info->path, persistent);
 					info->path = pestrndup(ZSTR_VAL(opened_path), ZSTR_LEN(opened_path), persistent);
 				}
-				/* now store the name of the lock */
-				info->lock.name = pestrndup(ZSTR_VAL(opened_path), ZSTR_LEN(opened_path), persistent);
 				zend_string_release_ex(opened_path, 0);
 			}
 		}
@@ -833,8 +825,6 @@ restart:
 				info->fp = NULL;
 				info->lock.fp = NULL;
 				info->fd = -1;
-
-				pefree(info->lock.name, persistent);
 
 				lock_file_mode = "r+b";
 
@@ -922,7 +912,7 @@ PHP_FUNCTION(dba_exists)
 		}
 	}
 
-	RETVAL_BOOL(info->hnd->exists(info, ZSTR_VAL(key_str), ZSTR_LEN(key_str)) == SUCCESS);
+	RETVAL_BOOL(info->hnd->exists(info, key_str) == SUCCESS);
 	DBA_RELEASE_HT_KEY_CREATION();
 }
 /* }}} */
@@ -988,15 +978,13 @@ PHP_FUNCTION(dba_fetch)
 		}
 	}
 
-	char *val;
-	size_t len = 0;
-	if ((val = info->hnd->fetch(info, ZSTR_VAL(key_str), ZSTR_LEN(key_str), skip, &len)) == NULL) {
+	zend_string *val;
+	if ((val = info->hnd->fetch(info, key_str, skip)) == NULL) {
 		DBA_RELEASE_HT_KEY_CREATION();
 		RETURN_FALSE;
 	}
 	DBA_RELEASE_HT_KEY_CREATION();
-	RETVAL_STRINGL(val, len);
-	efree(val);
+	RETURN_STR(val);
 }
 /* }}} */
 
@@ -1032,8 +1020,6 @@ PHP_FUNCTION(dba_key_split)
 /* {{{ Resets the internal key pointer and returns the first key */
 PHP_FUNCTION(dba_firstkey)
 {
-	char *fkey;
-	size_t len;
 	zval *id;
 	dba_info *info = NULL;
 
@@ -1043,12 +1029,10 @@ PHP_FUNCTION(dba_firstkey)
 
 	DBA_FETCH_RESOURCE(info, id);
 
-	fkey = info->hnd->firstkey(info, &len);
+	zend_string *fkey = info->hnd->firstkey(info);
 
 	if (fkey) {
-		RETVAL_STRINGL(fkey, len);
-		efree(fkey);
-		return;
+		RETURN_STR(fkey);
 	}
 
 	RETURN_FALSE;
@@ -1058,8 +1042,6 @@ PHP_FUNCTION(dba_firstkey)
 /* {{{ Returns the next key */
 PHP_FUNCTION(dba_nextkey)
 {
-	char *nkey;
-	size_t len;
 	zval *id;
 	dba_info *info = NULL;
 
@@ -1069,12 +1051,10 @@ PHP_FUNCTION(dba_nextkey)
 
 	DBA_FETCH_RESOURCE(info, id);
 
-	nkey = info->hnd->nextkey(info, &len);
+	zend_string *nkey = info->hnd->nextkey(info);
 
 	if (nkey) {
-		RETVAL_STRINGL(nkey, len);
-		efree(nkey);
-		return;
+		RETURN_STR(nkey);
 	}
 
 	RETURN_FALSE;
@@ -1106,7 +1086,7 @@ PHP_FUNCTION(dba_delete)
 		}
 	}
 
-	RETVAL_BOOL(info->hnd->delete(info, ZSTR_VAL(key_str), ZSTR_LEN(key_str)) == SUCCESS);
+	RETVAL_BOOL(info->hnd->delete(info, key_str) == SUCCESS);
 	DBA_RELEASE_HT_KEY_CREATION();
 }
 /* }}} */

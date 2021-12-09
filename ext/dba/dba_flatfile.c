@@ -56,21 +56,18 @@ DBA_FETCH_FUNC(flatfile)
 {
 	flatfile *dba = info->dbf;
 	datum gval;
-	char *new = NULL;
 	datum gkey;
+	zend_string *fetched_val = NULL;
 
-	gkey.dptr = (char *) key;
-	gkey.dsize = keylen;
+	gkey.dptr = ZSTR_VAL(key);
+	gkey.dsize = ZSTR_LEN(key);
 
 	gval = flatfile_fetch(dba, gkey);
 	if (gval.dptr) {
-		if (newlen) {
-			*newlen = gval.dsize;
-		}
-		new = estrndup(gval.dptr, gval.dsize);
+		fetched_val = zend_string_init(gval.dptr, gval.dsize, /* persistent */ false);
 		efree(gval.dptr);
 	}
-	return new;
+	return fetched_val;
 }
 
 DBA_UPDATE_FUNC(flatfile)
@@ -79,10 +76,10 @@ DBA_UPDATE_FUNC(flatfile)
 	datum gval;
 	datum gkey;
 
-	gkey.dptr = (char *) key;
-	gkey.dsize = keylen;
-	gval.dptr = (char *) val;
-	gval.dsize = vallen;
+	gkey.dptr = ZSTR_VAL(key);
+	gkey.dsize = ZSTR_LEN(key);
+	gval.dptr = ZSTR_VAL(val);
+	gval.dsize = ZSTR_LEN(val);
 
 	switch(flatfile_store(dba, gkey, gval, mode==1 ? FLATFILE_INSERT : FLATFILE_REPLACE)) {
 		case 0:
@@ -90,10 +87,12 @@ DBA_UPDATE_FUNC(flatfile)
 		case 1:
 			return FAILURE;
 		case -1:
-			php_error_docref1(NULL, key, E_WARNING, "Operation not possible");
+			// TODO Check when this happens and confirm this can even happen
+			php_error_docref(NULL, E_WARNING, "Operation not possible");
 			return FAILURE;
 		default:
-			php_error_docref2(NULL, key, val, E_WARNING, "Unknown return value");
+			// TODO Convert this to an assertion failure
+			php_error_docref(NULL, E_WARNING, "Unknown return value");
 			return FAILURE;
 	}
 }
@@ -104,8 +103,8 @@ DBA_EXISTS_FUNC(flatfile)
 	datum gval;
 	datum gkey;
 
-	gkey.dptr = (char *) key;
-	gkey.dsize = keylen;
+	gkey.dptr = ZSTR_VAL(key);
+	gkey.dsize = ZSTR_LEN(key);
 	gval = flatfile_fetch(dba, gkey);
 	if (gval.dptr) {
 		efree(gval.dptr);
@@ -119,8 +118,8 @@ DBA_DELETE_FUNC(flatfile)
 	flatfile *dba = info->dbf;
 	datum gkey;
 
-	gkey.dptr = (char *) key;
-	gkey.dsize = keylen;
+	gkey.dptr = ZSTR_VAL(key);
+	gkey.dsize = ZSTR_LEN(key);
 	return(flatfile_delete(dba, gkey) == -1 ? FAILURE : SUCCESS);
 }
 
@@ -133,10 +132,7 @@ DBA_FIRSTKEY_FUNC(flatfile)
 	}
 	dba->nextkey = flatfile_firstkey(dba);
 	if (dba->nextkey.dptr) {
-		if (newlen)  {
-			*newlen = dba->nextkey.dsize;
-		}
-		return estrndup(dba->nextkey.dptr, dba->nextkey.dsize);
+		return zend_string_init(dba->nextkey.dptr, dba->nextkey.dsize, /* persistent */ false);
 	}
 	return NULL;
 }
@@ -154,10 +150,7 @@ DBA_NEXTKEY_FUNC(flatfile)
 	}
 	dba->nextkey = flatfile_nextkey(dba);
 	if (dba->nextkey.dptr) {
-		if (newlen) {
-			*newlen = dba->nextkey.dsize;
-		}
-		return estrndup(dba->nextkey.dptr, dba->nextkey.dsize);
+		return zend_string_init(dba->nextkey.dptr, dba->nextkey.dsize, /* persistent */ false);
 	}
 	return NULL;
 }

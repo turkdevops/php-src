@@ -702,9 +702,10 @@ PHP_FUNCTION(count)
 		case IS_OBJECT: {
 			zval retval;
 			/* first, we check if the handler is defined */
-			if (Z_OBJ_HT_P(array)->count_elements) {
+			zend_object *zobj = Z_OBJ_P(array);
+			if (zobj->handlers->count_elements) {
 				RETVAL_LONG(1);
-				if (SUCCESS == Z_OBJ_HT(*array)->count_elements(Z_OBJ_P(array), &Z_LVAL_P(return_value))) {
+				if (SUCCESS == zobj->handlers->count_elements(zobj, &Z_LVAL_P(return_value))) {
 					return;
 				}
 				if (EG(exception)) {
@@ -712,8 +713,9 @@ PHP_FUNCTION(count)
 				}
 			}
 			/* if not and the object implements Countable we call its count() method */
-			if (instanceof_function(Z_OBJCE_P(array), zend_ce_countable)) {
-				zend_call_method_with_0_params(Z_OBJ_P(array), NULL, NULL, "count", &retval);
+			if (instanceof_function(zobj->ce, zend_ce_countable)) {
+				zend_function *count_fn = zend_hash_find_ptr(&zobj->ce->function_table, ZSTR_KNOWN(ZEND_STR_COUNT));
+				zend_call_known_instance_method_with_0_params(count_fn, zobj, &retval);
 				if (Z_TYPE(retval) != IS_UNDEF) {
 					RETVAL_LONG(zval_get_long(&retval));
 					zval_ptr_dtor(&retval);
@@ -939,8 +941,10 @@ static void php_usort(INTERNAL_FUNCTION_PARAMETERS, bucket_compare_func_t compar
 
 	zend_hash_sort(arr, compare_func, renumber);
 
-	zval_ptr_dtor(array);
+	zval garbage;
+	ZVAL_COPY_VALUE(&garbage, array);
 	ZVAL_ARR(array, arr);
+	zval_ptr_dtor(&garbage);
 
 	PHP_ARRAY_CMP_FUNC_RESTORE();
 	RETURN_TRUE;

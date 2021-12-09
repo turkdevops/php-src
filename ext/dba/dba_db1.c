@@ -88,13 +88,12 @@ DBA_FETCH_FUNC(db1)
 	DBT gval;
 	DBT gkey;
 
-	gkey.data = (char *) key;
-	gkey.size = keylen;
+	gkey.data = ZSTR_VAL(key);
+	gkey.size = ZSTR_LEN(key);
 
 	memset(&gval, 0, sizeof(gval));
 	if (dba->dbp->get(dba->dbp, &gkey, &gval, 0) == RET_SUCCESS) {
-		if (newlen) *newlen = gval.size;
-		return estrndup(gval.data, gval.size);
+		return zend_string_init(gval.data, gval.size, /* persistent */ false);
 	}
 	return NULL;
 }
@@ -105,11 +104,11 @@ DBA_UPDATE_FUNC(db1)
 	DBT gval;
 	DBT gkey;
 
-	gkey.data = (char *) key;
-	gkey.size = keylen;
+	gkey.data = ZSTR_VAL(key);
+	gkey.size = ZSTR_LEN(key);
 
-	gval.data = (char *) val;
-	gval.size = vallen;
+	gval.data = ZSTR_VAL(val);
+	gval.size = ZSTR_LEN(val);
 
 	return dba->dbp->put(dba->dbp, &gkey, &gval, mode == 1 ? R_NOOVERWRITE : 0) != RET_SUCCESS ? FAILURE : SUCCESS;
 }
@@ -120,8 +119,8 @@ DBA_EXISTS_FUNC(db1)
 	DBT gval;
 	DBT gkey;
 
-	gkey.data = (char *) key;
-	gkey.size = keylen;
+	gkey.data = ZSTR_VAL(key);
+	gkey.size = ZSTR_LEN(key);
 
 	return dba->dbp->get(dba->dbp, &gkey, &gval, 0) != RET_SUCCESS ? FAILURE : SUCCESS;
 }
@@ -131,8 +130,8 @@ DBA_DELETE_FUNC(db1)
 	dba_db1_data *dba = info->dbf;
 	DBT gkey;
 
-	gkey.data = (char *) key;
-	gkey.size = keylen;
+	gkey.data = ZSTR_VAL(key);
+	gkey.size = ZSTR_LEN(key);
 
 	return dba->dbp->del(dba->dbp, &gkey, 0) != RET_SUCCESS ? FAILURE : SUCCESS;
 }
@@ -147,8 +146,7 @@ DBA_FIRSTKEY_FUNC(db1)
 	memset(&gval, 0, sizeof(gval));
 
 	if (dba->dbp->seq(dba->dbp, &gkey, &gval, R_FIRST) == RET_SUCCESS) {
-		if (newlen) *newlen = gkey.size;
-		return estrndup(gkey.data, gkey.size);
+		return zend_string_init(gkey.data, gkey.size, /* persistent */ false);
 	}
 	return NULL;
 }
@@ -163,8 +161,7 @@ DBA_NEXTKEY_FUNC(db1)
 	memset(&gval, 0, sizeof(gval));
 
 	if (dba->dbp->seq(dba->dbp, &gkey, &gval, R_NEXT) == RET_SUCCESS) {
-		if (newlen) *newlen = gkey.size;
-		return estrndup(gkey.data, gkey.size);
+		return zend_string_init(gkey.data, gkey.size, /* persistent */ false);
 	}
 	return NULL;
 }

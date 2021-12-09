@@ -117,18 +117,17 @@ DBA_FETCH_FUNC(db3)
 {
 	dba_db3_data *dba = info->dbf;
 	DBT gval;
-	char *new = NULL;
 	DBT gkey;
 
 	memset(&gkey, 0, sizeof(gkey));
-	gkey.data = (char *) key; gkey.size = keylen;
+	gkey.data = ZSTR_VAL(key);
+	gkey.size = ZSTR_LEN(key);
 
 	memset(&gval, 0, sizeof(gval));
 	if (!dba->dbp->get(dba->dbp, NULL, &gkey, &gval, 0)) {
-		if (newlen) *newlen = gval.size;
-		new = estrndup(gval.data, gval.size);
+		return zend_string_init(gval.data, gval.size, /* persistent */ false);
 	}
-	return new;
+	return NULL;
 }
 
 DBA_UPDATE_FUNC(db3)
@@ -138,11 +137,12 @@ DBA_UPDATE_FUNC(db3)
 	DBT gkey;
 
 	memset(&gkey, 0, sizeof(gkey));
-	gkey.data = (char *) key; gkey.size = keylen;
+	gkey.data = ZSTR_VAL(key);
+	gkey.size = ZSTR_LEN(key);
 
 	memset(&gval, 0, sizeof(gval));
-	gval.data = (char *) val;
-	gval.size = vallen;
+	gval.data = ZSTR_VAL(val);
+	gval.size = ZSTR_LEN(val);
 
 	if (!dba->dbp->put(dba->dbp, NULL, &gkey, &gval,
 				mode == 1 ? DB_NOOVERWRITE : 0)) {
@@ -158,7 +158,8 @@ DBA_EXISTS_FUNC(db3)
 	DBT gkey;
 
 	memset(&gkey, 0, sizeof(gkey));
-	gkey.data = (char *) key; gkey.size = keylen;
+	gkey.data = ZSTR_VAL(key);
+	gkey.size = ZSTR_LEN(key);
 
 	memset(&gval, 0, sizeof(gval));
 	if (!dba->dbp->get(dba->dbp, NULL, &gkey, &gval, 0)) {
@@ -173,7 +174,8 @@ DBA_DELETE_FUNC(db3)
 	DBT gkey;
 
 	memset(&gkey, 0, sizeof(gkey));
-	gkey.data = (char *) key; gkey.size = keylen;
+	gkey.data = ZSTR_VAL(key);
+	gkey.size = ZSTR_LEN(key);
 
 	return dba->dbp->del(dba->dbp, NULL, &gkey, 0) ? FAILURE : SUCCESS;
 }
@@ -191,27 +193,24 @@ DBA_FIRSTKEY_FUNC(db3)
 		return NULL;
 	}
 
-	/* we should introduce something like PARAM_PASSTHRU... */
-	return dba_nextkey_db3(info, newlen);
+	return dba_nextkey_db3(info);
 }
 
 DBA_NEXTKEY_FUNC(db3)
 {
 	dba_db3_data *dba = info->dbf;
 	DBT gkey, gval;
-	char *nkey = NULL;
 
 	memset(&gkey, 0, sizeof(gkey));
 	memset(&gval, 0, sizeof(gval));
 
 	if (dba->cursor->c_get(dba->cursor, &gkey, &gval, DB_NEXT) == 0) {
 		if (gkey.data) {
-			nkey = estrndup(gkey.data, gkey.size);
-			if (newlen) *newlen = gkey.size;
+			return zend_string_init(gkey.data, gkey.size, /* persistent */ false);
 		}
 	}
 
-	return nkey;
+	return NULL;
 }
 
 DBA_OPTIMIZE_FUNC(db3)

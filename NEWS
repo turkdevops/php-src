@@ -1,13 +1,22 @@
 PHP                                                                        NEWS
 |||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
 ?? ??? ????, PHP 8.2.0alpha1
-  . Fixed bug #81390 (mb_detect_encoding() regression). (alexdowad)
 
 - CLI:
   . Fixed bug #81496 (Server logs incorrect request method). (lauri)
 
 - Core:
   . Fixed bug #81380 (Observer may not be initialized properly). (krakjoe)
+
+- Intl:
+  . Update all grandfathered language tags with preferred values
+
+- OCI8:
+  . Added oci8.prefetch_lob_size directive to tune LOB query performance
+
+- Standard:
+  . net_get_interfaces() also reports wireless network interfaces on Windows.
+    (Yurun)
 
 - Zip:
   . add ZipArchive::clearError() method

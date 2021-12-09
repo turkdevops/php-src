@@ -172,19 +172,17 @@ static zend_always_inline const char *
 zend_memnstr(const char *haystack, const char *needle, size_t needle_len, const char *end)
 {
 	const char *p = haystack;
-	ptrdiff_t off_p;
 	size_t off_s;
 
-	if (needle_len == 0) {
-		return p;
-	}
+	ZEND_ASSERT(end >= p);
 
 	if (needle_len == 1) {
 		return (const char *)memchr(p, *needle, (end-p));
+	} else if (UNEXPECTED(needle_len == 0)) {
+		return p;
 	}
 
-	off_p = end - haystack;
-	off_s = (off_p > 0) ? (size_t)off_p : 0;
+	off_s = (size_t)(end - p);
 
 	if (needle_len > off_s) {
 		return NULL;
@@ -195,16 +193,13 @@ zend_memnstr(const char *haystack, const char *needle, size_t needle_len, const 
 		end -= needle_len;
 
 		while (p <= end) {
-			if ((p = (const char *)memchr(p, *needle, (end-p+1))) && ne == p[needle_len-1]) {
-				if (!memcmp(needle+1, p+1, needle_len-2)) {
+			if ((p = (const char *)memchr(p, *needle, (end-p+1)))) {
+				if (ne == p[needle_len-1] && !memcmp(needle+1, p+1, needle_len-2)) {
 					return p;
 				}
-			}
-
-			if (p == NULL) {
+			} else {
 				return NULL;
 			}
-
 			p++;
 		}
 
@@ -216,6 +211,10 @@ zend_memnstr(const char *haystack, const char *needle, size_t needle_len, const 
 
 static zend_always_inline const void *zend_memrchr(const void *s, int c, size_t n)
 {
+#if defined(HAVE_MEMRCHR) && !defined(i386)
+	/* On x86 memrchr() doesn't use SSE/AVX, so inlined version is faster */
+	return (const void*)memrchr(s, c, n);
+#else
 	const unsigned char *e;
 	if (0 == n) {
 		return NULL;
@@ -227,6 +226,7 @@ static zend_always_inline const void *zend_memrchr(const void *s, int c, size_t 
 		}
 	}
 	return NULL;
+#endif
 }
 
 
@@ -481,6 +481,8 @@ ZEND_API zend_long ZEND_FASTCALL zend_atol(const char *str, size_t str_len);
 #define convert_scalar_to_number_ex(zv) convert_scalar_to_number(zv)
 
 ZEND_API void zend_update_current_locale(void);
+
+ZEND_API void zend_reset_lc_ctype_locale(void);
 
 /* The offset in bytes between the value and type fields of a zval */
 #define ZVAL_OFFSETOF_TYPE	\

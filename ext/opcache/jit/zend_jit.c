@@ -1332,7 +1332,8 @@ static int zend_jit_op_array_analyze2(const zend_op_array *op_array, zend_script
 	 && op_array->last_try_catch == 0
 	 && !(op_array->fn_flags & ZEND_ACC_GENERATOR)
 	 && !(ssa->cfg.flags & ZEND_FUNC_INDIRECT_VAR_ACCESS)) {
-		if (zend_ssa_inference(&CG(arena), op_array, script, ssa, optimization_level) != SUCCESS) {
+		if (zend_ssa_inference(&CG(arena), op_array, script, ssa,
+				optimization_level & ~ZEND_OPTIMIZER_NARROW_TO_DOUBLE) != SUCCESS) {
 			return FAILURE;
 		}
 	}
@@ -2628,6 +2629,7 @@ static bool zend_jit_next_is_send_result(const zend_op *opline)
 	if (opline->result_type == IS_TMP_VAR
 	 && (opline+1)->opcode == ZEND_SEND_VAL
 	 && (opline+1)->op1_type == IS_TMP_VAR
+	 && (opline+1)->op2_type != IS_CONST
 	 && (opline+1)->op1.var == opline->result.var) {
 		return 1;
 	}
@@ -2907,7 +2909,9 @@ static int zend_jit(const zend_op_array *op_array, zend_ssa *ssa, const zend_op 
 						if (opline->result_type != IS_UNUSED) {
 							res_use_info = -1;
 
-							if (opline->result_type == IS_CV) {
+							if (opline->result_type == IS_CV
+							 && ssa_op->result_use >= 0
+							 && !ssa->vars[ssa_op->result_use].no_val) {
 								zend_jit_addr res_use_addr = RES_USE_REG_ADDR();
 
 								if (Z_MODE(res_use_addr) != IS_REG
@@ -2965,7 +2969,9 @@ static int zend_jit(const zend_op_array *op_array, zend_ssa *ssa, const zend_op 
 						} else {
 							res_use_info = -1;
 
-							if (opline->result_type == IS_CV) {
+							if (opline->result_type == IS_CV
+							 && ssa_op->result_use >= 0
+							 && !ssa->vars[ssa_op->result_use].no_val) {
 								zend_jit_addr res_use_addr = RES_USE_REG_ADDR();
 
 								if (Z_MODE(res_use_addr) != IS_REG
@@ -3016,7 +3022,9 @@ static int zend_jit(const zend_op_array *op_array, zend_ssa *ssa, const zend_op 
 						} else {
 							res_use_info = -1;
 
-							if (opline->result_type == IS_CV) {
+							if (opline->result_type == IS_CV
+							 && ssa_op->result_use >= 0
+							 && !ssa->vars[ssa_op->result_use].no_val) {
 								zend_jit_addr res_use_addr = RES_USE_REG_ADDR();
 
 								if (Z_MODE(res_use_addr) != IS_REG

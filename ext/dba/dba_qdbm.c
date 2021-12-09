@@ -74,29 +74,29 @@ DBA_CLOSE_FUNC(qdbm)
 DBA_FETCH_FUNC(qdbm)
 {
 	dba_qdbm_data *dba = info->dbf;
-	char *value, *new = NULL;
+	char *value;
 	int value_size;
+	zend_string *fetched_val = NULL;
 
-	value = dpget(dba->dbf, key, keylen, 0, -1, &value_size);
+	value = dpget(dba->dbf, ZSTR_VAL(key), ZSTR_LEN(key), 0, -1, &value_size);
 	if (value) {
-		if (newlen) *newlen = value_size;
-		new = estrndup(value, value_size);
+		fetched_val = zend_string_init(value, value_size, /* persistent */ false);
 		free(value);
 	}
 
-	return new;
+	return fetched_val;
 }
 
 DBA_UPDATE_FUNC(qdbm)
 {
 	dba_qdbm_data *dba = info->dbf;
 
-	if (dpput(dba->dbf, key, keylen, val, vallen, mode == 1 ? DP_DKEEP : DP_DOVER)) {
+	if (dpput(dba->dbf, ZSTR_VAL(key), ZSTR_LEN(key), ZSTR_VAL(val), ZSTR_LEN(val), mode == 1 ? DP_DKEEP : DP_DOVER)) {
 		return SUCCESS;
 	}
 
 	if (dpecode != DP_EKEEP) {
-		php_error_docref2(NULL, key, val, E_WARNING, "%s", dperrmsg(dpecode));
+		php_error_docref(NULL, E_WARNING, "%s", dperrmsg(dpecode));
 	}
 
 	return FAILURE;
@@ -107,7 +107,7 @@ DBA_EXISTS_FUNC(qdbm)
 	dba_qdbm_data *dba = info->dbf;
 	char *value;
 
-	value = dpget(dba->dbf, key, keylen, 0, -1, NULL);
+	value = dpget(dba->dbf, ZSTR_VAL(key), ZSTR_LEN(key), 0, -1, NULL);
 	if (value) {
 		free(value);
 		return SUCCESS;
@@ -120,41 +120,41 @@ DBA_DELETE_FUNC(qdbm)
 {
 	dba_qdbm_data *dba = info->dbf;
 
-	return dpout(dba->dbf, key, keylen) ? SUCCESS : FAILURE;
+	return dpout(dba->dbf, ZSTR_VAL(key), ZSTR_LEN(key)) ? SUCCESS : FAILURE;
 }
 
 DBA_FIRSTKEY_FUNC(qdbm)
 {
 	dba_qdbm_data *dba = info->dbf;
 	int value_size;
-	char *value, *new = NULL;
+	char *value;
+	zend_string *key = NULL;
 
 	dpiterinit(dba->dbf);
 
 	value = dpiternext(dba->dbf, &value_size);
 	if (value) {
-		if (newlen) *newlen = value_size;
-		new = estrndup(value, value_size);
+		key = zend_string_init(value, value_size, /* persistent */ false);
 		free(value);
 	}
 
-	return new;
+	return key;
 }
 
 DBA_NEXTKEY_FUNC(qdbm)
 {
 	dba_qdbm_data *dba = info->dbf;
 	int value_size;
-	char *value, *new = NULL;
+	char *value;
+	zend_string *key = NULL;
 
 	value = dpiternext(dba->dbf, &value_size);
 	if (value) {
-		if (newlen) *newlen = value_size;
-		new = estrndup(value, value_size);
+		key = zend_string_init(value, value_size, /* persistent */ false);
 		free(value);
 	}
 
-	return new;
+	return key;
 }
 
 DBA_OPTIMIZE_FUNC(qdbm)

@@ -664,6 +664,7 @@ static zend_always_inline Bucket *zend_hash_find_bucket(const HashTable *ht, zen
 
 	if (known_hash) {
 		h = ZSTR_H(key);
+		ZEND_ASSERT(h != 0 && "Hash must be known");
 	} else {
 		h = zend_string_hash_val(key);
 	}
@@ -748,10 +749,7 @@ static zend_always_inline zval *_zend_hash_add_or_update_i(HashTable *ht, zend_s
 
 	IS_CONSISTENT(ht);
 	HT_ASSERT_RC1(ht);
-
-	if (!ZSTR_IS_INTERNED(key)) {
-		zend_string_hash_val(key);
-	}
+	zend_string_hash_val(key);
 
 	if (UNEXPECTED(HT_FLAGS(ht) & (HASH_FLAG_UNINITIALIZED|HASH_FLAG_PACKED))) {
 		if (EXPECTED(HT_FLAGS(ht) & HASH_FLAG_UNINITIALIZED)) {

@@ -4751,7 +4751,7 @@ ZEND_METHOD(ReflectionClass, isInstantiable)
 		RETURN_THROWS();
 	}
 	GET_REFLECTION_OBJECT_PTR(ce);
-	if (ce->ce_flags & (ZEND_ACC_INTERFACE | ZEND_ACC_TRAIT | ZEND_ACC_EXPLICIT_ABSTRACT_CLASS | ZEND_ACC_IMPLICIT_ABSTRACT_CLASS)) {
+	if (ce->ce_flags & (ZEND_ACC_INTERFACE | ZEND_ACC_TRAIT | ZEND_ACC_EXPLICIT_ABSTRACT_CLASS | ZEND_ACC_IMPLICIT_ABSTRACT_CLASS | ZEND_ACC_ENUM)) {
 		RETURN_FALSE;
 	}
 
@@ -4776,7 +4776,7 @@ ZEND_METHOD(ReflectionClass, isCloneable)
 		RETURN_THROWS();
 	}
 	GET_REFLECTION_OBJECT_PTR(ce);
-	if (ce->ce_flags & (ZEND_ACC_INTERFACE | ZEND_ACC_TRAIT | ZEND_ACC_EXPLICIT_ABSTRACT_CLASS | ZEND_ACC_IMPLICIT_ABSTRACT_CLASS)) {
+	if (ce->ce_flags & (ZEND_ACC_INTERFACE | ZEND_ACC_TRAIT | ZEND_ACC_EXPLICIT_ABSTRACT_CLASS | ZEND_ACC_IMPLICIT_ABSTRACT_CLASS | ZEND_ACC_ENUM)) {
 		RETURN_FALSE;
 	}
 	if (!Z_ISUNDEF(intern->obj)) {
@@ -5116,18 +5116,15 @@ ZEND_METHOD(ReflectionClass, getTraitAliases)
 
 				if (!class_name) {
 					uint32_t j = 0;
-					zval *zv;
-					zend_class_entry *trait;
 					zend_string *lcname = zend_string_tolower(cur_ref->method_name);
 
 					for (j = 0; j < ce->num_traits; j++) {
-						zv = zend_hash_find_known_hash(CG(class_table), ce->trait_names[j].lc_name);
-						if (zv) {
-							trait = Z_CE_P(zv);
-							if (zend_hash_exists(&trait->function_table, lcname)) {
-								class_name = trait->name;
-								break;
-							}
+						zend_class_entry *trait =
+							zend_hash_find_ptr(CG(class_table), ce->trait_names[j].lc_name);
+						ZEND_ASSERT(trait && "Trait must exist");
+						if (zend_hash_exists(&trait->function_table, lcname)) {
+							class_name = trait->name;
+							break;
 						}
 					}
 					zend_string_release_ex(lcname, 0);

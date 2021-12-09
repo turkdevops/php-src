@@ -85,17 +85,15 @@ DBA_CLOSE_FUNC(dbm)
 DBA_FETCH_FUNC(dbm)
 {
 	datum gval;
-	char *new = NULL;
 	datum gkey;
 
-	gkey.dptr = (char *) key;
-	gkey.dsize = keylen;
+	gkey.dptr = ZSTR_VAL(key);
+	gkey.dsize = ZSTR_LEN(key);
 	gval = fetch(gkey);
-	if(gval.dptr) {
-		if(newlen) *newlen = gval.dsize;
-		new = estrndup(gval.dptr, gval.dsize);
+	if (gval.dptr) {
+		return zend_string_init(gval.dptr, gval.dsize, /* persistent */ false);
 	}
-	return new;
+	return NULL;
 }
 
 DBA_UPDATE_FUNC(dbm)
@@ -103,18 +101,18 @@ DBA_UPDATE_FUNC(dbm)
 	datum gval;
 	datum gkey;
 
-	gkey.dptr = (char *) key;
-	gkey.dsize = keylen;
+	gkey.dptr = ZSTR_VAL(key);
+	gkey.dsize = ZSTR_LEN(key);
 
 	if (mode == 1) { /* insert */
 		gval = fetch(gkey);
-		if(gval.dptr) {
+		if (gval.dptr) {
 			return FAILURE;
 		}
 	}
 
-	gval.dptr = (char *) val;
-	gval.dsize = vallen;
+	gval.dptr = ZSTR_VAL(val);
+	gval.dsize = ZSTR_LEN(val);
 
 	return (store(gkey, gval) == -1 ? FAILURE : SUCCESS);
 }
@@ -124,11 +122,11 @@ DBA_EXISTS_FUNC(dbm)
 	datum gval;
 	datum gkey;
 
-	gkey.dptr = (char *) key;
-	gkey.dsize = keylen;
+	gkey.dptr = ZSTR_VAL(key);
+	gkey.dsize = ZSTR_LEN(key);
 
 	gval = fetch(gkey);
-	if(gval.dptr) {
+	if (gval.dptr) {
 		return SUCCESS;
 	}
 	return FAILURE;
@@ -138,8 +136,8 @@ DBA_DELETE_FUNC(dbm)
 {
 	datum gkey;
 
-	gkey.dptr = (char *) key;
-	gkey.dsize = keylen;
+	gkey.dptr = ZSTR_VAL(key);
+	gkey.dsize = ZSTR_LEN(key);
 	return(delete(gkey) == -1 ? FAILURE : SUCCESS);
 }
 
@@ -147,15 +145,15 @@ DBA_FIRSTKEY_FUNC(dbm)
 {
 	dba_dbm_data *dba = info->dbf;
 	datum gkey;
-	char *key = NULL;
+	zend_string *key = NULL;
 
 	gkey = firstkey();
-	if(gkey.dptr) {
-		if(newlen) *newlen = gkey.dsize;
-		key = estrndup(gkey.dptr, gkey.dsize);
+	if (gkey.dptr) {
+		key = zend_string_init(gkey.dptr, gkey.dsize, /* persistent */ false);
 		dba->nextkey = gkey;
-	} else
+	} else {
 		dba->nextkey.dptr = NULL;
+	}
 	return key;
 }
 
@@ -163,18 +161,18 @@ DBA_NEXTKEY_FUNC(dbm)
 {
 	dba_dbm_data *dba = info->dbf;
 	datum gkey;
-	char *nkey = NULL;
+	zend_string *key = NULL;
 
-	if(!dba->nextkey.dptr) return NULL;
+	if (!dba->nextkey.dptr) { return NULL; }
 
 	gkey = nextkey(dba->nextkey);
-	if(gkey.dptr) {
-		if(newlen) *newlen = gkey.dsize;
-		nkey = estrndup(gkey.dptr, gkey.dsize);
+	if (gkey.dptr) {
+		key = zend_string_init(gkey.dptr, gkey.dsize, /* persistent */ false);
 		dba->nextkey = gkey;
-	} else
+	} else {
 		dba->nextkey.dptr = NULL;
-	return nkey;
+	}
+	return key;
 }
 
 DBA_OPTIMIZE_FUNC(dbm)

@@ -1588,7 +1588,7 @@ ZEND_API void zend_do_inheritance_ex(zend_class_entry *ce, zend_class_entry *par
 			ce->ce_flags |= ZEND_ACC_EXPLICIT_ABSTRACT_CLASS;
 		}
 	}
-	ce->ce_flags |= parent_ce->ce_flags & (ZEND_HAS_STATIC_IN_METHODS | ZEND_ACC_HAS_TYPE_HINTS | ZEND_ACC_USE_GUARDS | ZEND_ACC_NOT_SERIALIZABLE);
+	ce->ce_flags |= parent_ce->ce_flags & (ZEND_HAS_STATIC_IN_METHODS | ZEND_ACC_HAS_TYPE_HINTS | ZEND_ACC_USE_GUARDS | ZEND_ACC_NOT_SERIALIZABLE | ZEND_ACC_ALLOW_DYNAMIC_PROPERTIES);
 }
 /* }}} */
 
@@ -2768,9 +2768,6 @@ ZEND_API zend_class_entry *zend_do_link_class(zend_class_entry *ce, zend_string 
 					}
 					zv = zend_hash_find_known_hash(CG(class_table), key);
 					Z_CE_P(zv) = ret;
-					if (ZSTR_HAS_CE_CACHE(ret->name)) {
-						ZSTR_SET_CE_CACHE(ret->name, ret);
-					}
 					return ret;
 				}
 
@@ -2994,9 +2991,6 @@ ZEND_API zend_class_entry *zend_try_early_bind(zend_class_entry *ce, zend_class_
 			if (ret) {
 				if (UNEXPECTED(!register_early_bound_ce(delayed_early_binding, lcname, ret))) {
 					return NULL;
-				}
-				if (ZSTR_HAS_CE_CACHE(ret->name)) {
-					ZSTR_SET_CE_CACHE(ret->name, ret);
 				}
 				return ret;
 			}

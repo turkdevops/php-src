@@ -250,7 +250,9 @@ ZEND_API void zend_cleanup_mutable_class_data(zend_class_entry *ce)
 			zend_class_constant *c;
 
 			ZEND_HASH_MAP_FOREACH_PTR(constants_table, c) {
-				zval_ptr_dtor_nogc(&c->value);
+				if (c->ce == ce) {
+					zval_ptr_dtor_nogc(&c->value);
+				}
 			} ZEND_HASH_FOREACH_END();
 			zend_hash_destroy(constants_table);
 			mutable_data->constants_table = NULL;
@@ -466,6 +468,9 @@ ZEND_API void destroy_zend_class(zval *zv)
 			}
 			if (ce->iterator_funcs_ptr) {
 				free(ce->iterator_funcs_ptr);
+			}
+			if (ce->arrayaccess_funcs_ptr) {
+				free(ce->arrayaccess_funcs_ptr);
 			}
 			if (ce->num_interfaces > 0) {
 				free(ce->interfaces);
@@ -791,6 +796,7 @@ static void emit_live_range(
 			if (use_opline->opcode != ZEND_FREE) {
 				/* This can happen if one branch of the coalesce has been optimized away.
 				 * In this case we should emit a normal live-range instead. */
+				start++;
 				break;
 			}
 
@@ -806,6 +812,12 @@ static void emit_live_range(
 
 			do {
 				use_opline--;
+
+				/* The use might have been optimized away, in which case we will hit the def
+				 * instead. */
+				if (use_opline->opcode == ZEND_COPY_TMP && use_opline->result.var == rt_var_num) {
+					return;
+				}
 			} while (!(
 				((use_opline->op1_type & (IS_TMP_VAR|IS_VAR)) && use_opline->op1.var == rt_var_num) ||
 				((use_opline->op2_type & (IS_TMP_VAR|IS_VAR)) && use_opline->op2.var == rt_var_num)

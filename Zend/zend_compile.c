@@ -1802,6 +1802,7 @@ ZEND_API void zend_initialize_class_data(zend_class_entry *ce, bool nullify_hand
 		ce->create_object = NULL;
 		ce->get_iterator = NULL;
 		ce->iterator_funcs_ptr = NULL;
+		ce->arrayaccess_funcs_ptr = NULL;
 		ce->get_static_method = NULL;
 		ce->parent = NULL;
 		ce->parent_name = NULL;
@@ -2178,11 +2179,11 @@ static zend_op *zend_delayed_compile_end(uint32_t offset) /* {{{ */
 
 	ZEND_ASSERT(count >= offset);
 	for (i = offset; i < count; ++i) {
-		opline = get_next_op();
-		memcpy(opline, &oplines[i], sizeof(zend_op));
-		if (opline->opcode == ZEND_JMP_NULL) {
-			uint32_t opnum = get_next_op_number() - 1;
-			zend_stack_push(&CG(short_circuiting_opnums), &opnum);
+		if (EXPECTED(oplines[i].opcode != ZEND_NOP)) {
+			opline = get_next_op();
+			memcpy(opline, &oplines[i], sizeof(zend_op));
+		} else {
+			opline = CG(active_op_array)->opcodes + oplines[i].extended_value;
 		}
 	}
 
@@ -2826,11 +2827,31 @@ static zend_op *zend_delayed_compile_prop(znode *result, zend_ast *ast, uint32_t
 
 		zend_separate_if_call_and_write(&obj_node, obj_ast, type);
 		if (nullsafe) {
-			/* We will push to the short_circuiting_opnums stack in zend_delayed_compile_end(). */
-			opline = zend_delayed_emit_op(NULL, ZEND_JMP_NULL, &obj_node, NULL);
-			if (opline->op1_type == IS_CONST) {
-				Z_TRY_ADDREF_P(CT_CONSTANT(opline->op1));
+			if (obj_node.op_type == IS_TMP_VAR) {
+				/* Flush delayed oplines */
+				zend_op *opline = NULL, *oplines = zend_stack_base(&CG(delayed_oplines_stack));
+				uint32_t var = obj_node.u.op.var;
+				uint32_t count = zend_stack_count(&CG(delayed_oplines_stack));
+				uint32_t i = count;
+
+				while (i > 0 && oplines[i-1].result_type == IS_TMP_VAR && oplines[i-1].result.var == var) {
+					i--;
+					if (oplines[i].op1_type == IS_TMP_VAR) {
+						var = oplines[i].op1.var;
+					} else {
+						break;
+					}
+				}
+				for (; i < count; ++i) {
+					if (oplines[i].opcode != ZEND_NOP) {
+						opline = get_next_op();
+						memcpy(opline, &oplines[i], sizeof(zend_op));
+						oplines[i].opcode = ZEND_NOP;
+						oplines[i].extended_value = opline - CG(active_op_array)->opcodes;
+					}
+				}
 			}
+			zend_emit_jmp_null(&obj_node);
 		}
 	}
 
@@ -6970,9 +6991,17 @@ static zend_string *zend_begin_method_decl(zend_op_array *op_array, zend_string 
 	}
 
 	if (in_interface) {
-		if (!(fn_flags & ZEND_ACC_PUBLIC) || (fn_flags & (ZEND_ACC_FINAL|ZEND_ACC_ABSTRACT))) {
+		if (!(fn_flags & ZEND_ACC_PUBLIC)) {
 			zend_error_noreturn(E_COMPILE_ERROR, "Access type for interface method "
 				"%s::%s() must be public", ZSTR_VAL(ce->name), ZSTR_VAL(name));
+		}
+		if (fn_flags & ZEND_ACC_FINAL) {
+			zend_error_noreturn(E_COMPILE_ERROR, "Interface method "
+				"%s::%s() must not be final", ZSTR_VAL(ce->name), ZSTR_VAL(name));
+		}
+		if (fn_flags & ZEND_ACC_ABSTRACT) {
+			zend_error_noreturn(E_COMPILE_ERROR, "Interface method "
+				"%s::%s() must not be abstract", ZSTR_VAL(ce->name), ZSTR_VAL(name));
 		}
 		op_array->fn_flags |= ZEND_ACC_ABSTRACT;
 	}
@@ -8305,6 +8334,10 @@ static inline bool zend_try_ct_eval_binary_op(zval *result, uint32_t opcode, zva
 ZEND_API bool zend_unary_op_produces_error(uint32_t opcode, zval *op)
 {
 	if (opcode == ZEND_BW_NOT) {
+		/* BW_NOT on string does not convert the string into an integer. */
+		if (Z_TYPE_P(op) == IS_STRING) {
+			return 0;
+		}
 		return Z_TYPE_P(op) <= IS_TRUE || !zend_is_op_long_compatible(op);
 	}
 
@@ -8915,7 +8948,9 @@ static void zend_compile_assign_coalesce(znode *result, zend_ast *ast) /* {{{ */
 
 	/* Reproduce some of the zend_compile_assign() opcode fixup logic here. */
 	opline = &CG(active_op_array)->opcodes[CG(active_op_array)->last-1];
-	switch (var_ast->kind) {
+	/* Treat $GLOBALS['x'] assignment like assignment to variable. */
+	zend_ast_kind kind = is_global_var_fetch(var_ast) ? ZEND_AST_VAR : var_ast->kind;
+	switch (kind) {
 		case ZEND_AST_VAR:
 			zend_emit_op_tmp(&assign_node, ZEND_ASSIGN, &var_node_w, &default_node);
 			break;

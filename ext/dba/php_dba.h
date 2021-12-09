@@ -32,7 +32,6 @@ typedef enum {
 
 typedef struct dba_lock {
 	php_stream *fp;
-	char *name;
 	int mode; /* LOCK_EX,LOCK_SH */
 } dba_lock;
 
@@ -74,12 +73,12 @@ typedef struct dba_handler {
 	int flags; /* whether and how dba does locking and other flags*/
 	zend_result (*open)(dba_info *, char **error);
 	void (*close)(dba_info *);
-	char* (*fetch)(dba_info *, char *, size_t, int, size_t *);
-	zend_result (*update)(dba_info *, char *, size_t, char *, size_t, int);
-	zend_result (*exists)(dba_info *, char *, size_t);
-	zend_result (*delete)(dba_info *, char *, size_t);
-	char* (*firstkey)(dba_info *, size_t *);
-	char* (*nextkey)(dba_info *, size_t *);
+	zend_string* (*fetch)(dba_info *, zend_string *, int);
+	zend_result (*update)(dba_info *, zend_string *, zend_string *, int);
+	zend_result (*exists)(dba_info *, zend_string *);
+	zend_result (*delete)(dba_info *, zend_string *);
+	zend_string* (*firstkey)(dba_info *);
+	zend_string* (*nextkey)(dba_info *);
 	zend_result (*optimize)(dba_info *);
 	zend_result (*sync)(dba_info *);
 	char* (*info)(struct dba_handler *hnd, dba_info *);
@@ -93,17 +92,17 @@ typedef struct dba_handler {
 #define DBA_CLOSE_FUNC(x) \
 	void dba_close_##x(dba_info *info)
 #define DBA_FETCH_FUNC(x) \
-	char *dba_fetch_##x(dba_info *info, char *key, size_t keylen, int skip, size_t *newlen)
+	zend_string *dba_fetch_##x(dba_info *info, zend_string *key, int skip)
 #define DBA_UPDATE_FUNC(x) \
-	zend_result dba_update_##x(dba_info *info, char *key, size_t keylen, char *val, size_t vallen, int mode)
+	zend_result dba_update_##x(dba_info *info, zend_string *key, zend_string *val, int mode)
 #define DBA_EXISTS_FUNC(x) \
-	zend_result dba_exists_##x(dba_info *info, char *key, size_t keylen)
+	zend_result dba_exists_##x(dba_info *info, zend_string *key)
 #define DBA_DELETE_FUNC(x) \
-	zend_result dba_delete_##x(dba_info *info, char *key, size_t keylen)
+	zend_result dba_delete_##x(dba_info *info, zend_string *key)
 #define DBA_FIRSTKEY_FUNC(x) \
-	char *dba_firstkey_##x(dba_info *info, size_t *newlen)
+	zend_string *dba_firstkey_##x(dba_info *info)
 #define DBA_NEXTKEY_FUNC(x) \
-	char *dba_nextkey_##x(dba_info *info, size_t *newlen)
+	zend_string *dba_nextkey_##x(dba_info *info)
 #define DBA_OPTIMIZE_FUNC(x) \
 	zend_result dba_optimize_##x(dba_info *info)
 #define DBA_SYNC_FUNC(x) \

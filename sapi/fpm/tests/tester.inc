@@ -527,16 +527,14 @@ class Tester
      * @param string $query
      * @param array $headers
      * @param string|null $uri
-     * @param string|null $address
-     * @param string|null $successMessage
-     * @param string|null $errorMessage
-     * @param bool $connKeepAlive
+     * @param string|null $scriptFilename
      * @return array
      */
     private function getRequestParams(
         string $query = '',
         array $headers = [],
-        string $uri = null
+        string $uri = null,
+        string $scriptFilename = null
     ) {
         if (is_null($uri)) {
             $uri = $this->makeSourceFile();
@@ -546,7 +544,7 @@ class Tester
             [
                 'GATEWAY_INTERFACE' => 'FastCGI/1.0',
                 'REQUEST_METHOD'    => 'GET',
-                'SCRIPT_FILENAME'   => $uri,
+                'SCRIPT_FILENAME'   => $scriptFilename ?: $uri,
                 'SCRIPT_NAME'       => $uri,
                 'QUERY_STRING'      => $query,
                 'REQUEST_URI'       => $uri . ($query ? '?'.$query : ""),
@@ -580,6 +578,7 @@ class Tester
      * @param string|null $successMessage
      * @param string|null $errorMessage
      * @param bool $connKeepAlive
+     * @param string|null $scriptFilename = null
      * @return Response
      */
     public function request(
@@ -589,13 +588,14 @@ class Tester
         string $address = null,
         string $successMessage = null,
         string $errorMessage = null,
-        bool $connKeepAlive = false
+        bool $connKeepAlive = false,
+        string $scriptFilename = null
     ) {
         if ($this->hasError()) {
             return new Response(null, true);
         }
 
-        $params = $this->getRequestParams($query, $headers, $uri);
+        $params = $this->getRequestParams($query, $headers, $uri, $scriptFilename);
 
         try {
             $this->response = new Response(
@@ -624,6 +624,7 @@ class Tester
      * @param string|null $successMessage
      * @param string|null $errorMessage
      * @param bool $connKeepAlive
+     * @param int $readTimeout
      * @return Response[]
      * @throws \Exception
      */
@@ -632,7 +633,8 @@ class Tester
         string $address = null,
         string $successMessage = null,
         string $errorMessage = null,
-        bool $connKeepAlive = false
+        bool $connKeepAlive = false,
+        int $readTimeout = 0
     ) {
         if ($this->hasError()) {
             return new Response(null, true);
@@ -658,8 +660,8 @@ class Tester
                 ];
             }, $requests);
 
-            $responses = array_map(function ($conn) {
-                $response = new Response($conn['client']->wait_for_response_data($conn['requestId']));
+            $responses = array_map(function ($conn) use ($readTimeout) {
+                $response = new Response($conn['client']->wait_for_response_data($conn['requestId'], $readTimeout));
                 if ($this->debug) {
                     $response->debugOutput();
                 }

@@ -87,15 +87,14 @@ DBA_FETCH_FUNC(db2)
 	DBT gval = {0};
 	DBT gkey = {0};
 
-	gkey.data = (char *) key;
-	gkey.size = keylen;
+	gkey.data = ZSTR_VAL(key);
+	gkey.size = ZSTR_LEN(key);
 
 	if (dba->dbp->get(dba->dbp, NULL, &gkey, &gval, 0)) {
 		return NULL;
 	}
 
-	if (newlen) *newlen = gval.size;
-	return estrndup(gval.data, gval.size);
+	return zend_string_init(gval.data, gval.size, /* persistent */ false);
 }
 
 DBA_UPDATE_FUNC(db2)
@@ -104,11 +103,11 @@ DBA_UPDATE_FUNC(db2)
 	DBT gval = {0};
 	DBT gkey = {0};
 
-	gkey.data = (char *) key;
-	gkey.size = keylen;
+	gkey.data = ZSTR_VAL(key);
+	gkey.size = ZSTR_LEN(key);
 
-	gval.data = (char *) val;
-	gval.size = vallen;
+	gval.data = ZSTR_VAL(val);
+	gval.size = ZSTR_LEN(val);
 
 	if (dba->dbp->put(dba->dbp, NULL, &gkey, &gval,
 				mode == 1 ? DB_NOOVERWRITE : 0)) {
@@ -123,8 +122,8 @@ DBA_EXISTS_FUNC(db2)
 	DBT gval = {0};
 	DBT gkey = {0};
 
-	gkey.data = (char *) key;
-	gkey.size = keylen;
+	gkey.data = ZSTR_VAL(key);
+	gkey.size = ZSTR_LEN(key);
 
 	if (dba->dbp->get(dba->dbp, NULL, &gkey, &gval, 0)) {
 		return FAILURE;
@@ -137,8 +136,8 @@ DBA_DELETE_FUNC(db2)
 	dba_db2_data *dba = info->dbf;
 	DBT gkey = {0};
 
-	gkey.data = (char *) key;
-	gkey.size = keylen;
+	gkey.data = ZSTR_VAL(key);
+	gkey.size = ZSTR_LEN(key);
 
 	return dba->dbp->del(dba->dbp, NULL, &gkey, 0) ? FAILURE : SUCCESS;
 }
@@ -160,8 +159,7 @@ DBA_FIRSTKEY_FUNC(db2)
 		return NULL;
 	}
 
-	/* we should introduce something like PARAM_PASSTHRU... */
-	return dba_nextkey_db2(info, newlen);
+	return dba_nextkey_db2(info);
 }
 
 DBA_NEXTKEY_FUNC(db2)
@@ -170,11 +168,11 @@ DBA_NEXTKEY_FUNC(db2)
 	DBT gkey = {0}, gval = {0};
 
 	if (dba->cursor->c_get(dba->cursor, &gkey, &gval, DB_NEXT)
-			|| !gkey.data)
+			|| !gkey.data) {
 		return NULL;
+	}
 
-	if (newlen) *newlen = gkey.size;
-	return estrndup(gkey.data, gkey.size);
+	return zend_string_init(gkey.data, gkey.size, /* persistent */ false);
 }
 
 DBA_OPTIMIZE_FUNC(db2)
