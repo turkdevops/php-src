@@ -1037,8 +1037,6 @@ static bool zend_inference_calc_range(const zend_op_array *op_array, zend_ssa *s
 
 ZEND_API bool zend_inference_propagate_range(const zend_op_array *op_array, zend_ssa *ssa, zend_op *opline, zend_ssa_op* ssa_op, int var, zend_ssa_range *tmp)
 {
-	zend_long op1_min, op2_min, op1_max, op2_max;
-
 	tmp->underflow = 0;
 	tmp->overflow = 0;
 	switch (opline->opcode) {
@@ -1066,8 +1064,8 @@ ZEND_API bool zend_inference_propagate_range(const zend_op_array *op_array, zend
 						tmp->min = ZEND_LONG_MIN;
 						tmp->max = ZEND_LONG_MAX;
 					} else {
-						op1_min = OP1_MIN_RANGE();
-						op1_max = OP1_MAX_RANGE();
+						zend_long op1_min = OP1_MIN_RANGE();
+						zend_long op1_max = OP1_MAX_RANGE();
 						tmp->min = ~op1_max;
 						tmp->max = ~op1_min;
 					}
@@ -1100,144 +1098,6 @@ ZEND_API bool zend_inference_propagate_range(const zend_op_array *op_array, zend
 				}
 			}
 			break;
-		case ZEND_BOOL:
-		case ZEND_JMPZ_EX:
-		case ZEND_JMPNZ_EX:
-			if (ssa_op->result_def == var) {
-				if (OP1_HAS_RANGE()) {
-					op1_min = OP1_MIN_RANGE();
-					op1_max = OP1_MAX_RANGE();
-					tmp->min = (op1_min > 0 || op1_max < 0);
-					tmp->max = (op1_min != 0 || op1_max != 0);
-					return 1;
-				} else {
-					tmp->min = 0;
-					tmp->max = 1;
-					return 1;
-				}
-			}
-			break;
-		case ZEND_BOOL_NOT:
-			if (ssa_op->result_def == var) {
-				if (OP1_HAS_RANGE()) {
-					op1_min = OP1_MIN_RANGE();
-					op1_max = OP1_MAX_RANGE();
-					tmp->min = (op1_min == 0 && op1_max == 0);
-					tmp->max = (op1_min <= 0 && op1_max >= 0);
-					return 1;
-				} else {
-					tmp->min = 0;
-					tmp->max = 1;
-					return 1;
-				}
-			}
-			break;
-		case ZEND_BOOL_XOR:
-			if (ssa_op->result_def == var) {
-				if (OP1_HAS_RANGE() && OP2_HAS_RANGE()) {
-					op1_min = OP1_MIN_RANGE();
-					op2_min = OP2_MIN_RANGE();
-					op1_max = OP1_MAX_RANGE();
-					op2_max = OP2_MAX_RANGE();
-					op1_min = (op1_min > 0 || op1_max < 0);
-					op1_max = (op1_min != 0 || op1_max != 0);
-					op2_min = (op2_min > 0 || op2_max < 0);
-					op2_max = (op2_min != 0 || op2_max != 0);
-					tmp->min = 0;
-					tmp->max = 1;
-					if (op1_min == op1_max && op2_min == op2_max) {
-						if (op1_min == op2_min) {
-							tmp->max = 0;
-						} else {
-							tmp->min = 1;
-						}
-					}
-					return 1;
-				} else {
-					tmp->min = 0;
-					tmp->max = 1;
-					return 1;
-				}
-			}
-			break;
-		case ZEND_IS_IDENTICAL:
-		case ZEND_IS_EQUAL:
-			if (ssa_op->result_def == var) {
-				if (OP1_HAS_RANGE() && OP2_HAS_RANGE()) {
-					op1_min = OP1_MIN_RANGE();
-					op2_min = OP2_MIN_RANGE();
-					op1_max = OP1_MAX_RANGE();
-					op2_max = OP2_MAX_RANGE();
-
-					tmp->min = (op1_min == op1_max &&
-					           op2_min == op2_max &&
-					           op1_min == op2_max);
-					tmp->max = (op1_min <= op2_max && op1_max >= op2_min);
-					return 1;
-				} else {
-					tmp->min = 0;
-					tmp->max = 1;
-					return 1;
-				}
-			}
-			break;
-		case ZEND_IS_NOT_IDENTICAL:
-		case ZEND_IS_NOT_EQUAL:
-			if (ssa_op->result_def == var) {
-				if (OP1_HAS_RANGE() && OP2_HAS_RANGE()) {
-					op1_min = OP1_MIN_RANGE();
-					op2_min = OP2_MIN_RANGE();
-					op1_max = OP1_MAX_RANGE();
-					op2_max = OP2_MAX_RANGE();
-
-					tmp->min = (op1_min > op2_max || op1_max < op2_min);
-					tmp->max = (op1_min != op1_max ||
-					           op2_min != op2_max ||
-					           op1_min != op2_max);
-					return 1;
-				} else {
-					tmp->min = 0;
-					tmp->max = 1;
-					return 1;
-				}
-			}
-			break;
-		case ZEND_IS_SMALLER:
-			if (ssa_op->result_def == var) {
-				if (OP1_HAS_RANGE() && OP2_HAS_RANGE()) {
-					op1_min = OP1_MIN_RANGE();
-					op2_min = OP2_MIN_RANGE();
-					op1_max = OP1_MAX_RANGE();
-					op2_max = OP2_MAX_RANGE();
-
-					tmp->min = op1_max < op2_min;
-					tmp->max = op1_min < op2_max;
-					return 1;
-				} else {
-					tmp->min = 0;
-					tmp->max = 1;
-					return 1;
-				}
-			}
-			break;
-		case ZEND_IS_SMALLER_OR_EQUAL:
-			if (ssa_op->result_def == var) {
-				if (OP1_HAS_RANGE() && OP2_HAS_RANGE()) {
-					op1_min = OP1_MIN_RANGE();
-					op2_min = OP2_MIN_RANGE();
-					op1_max = OP1_MAX_RANGE();
-					op2_max = OP2_MAX_RANGE();
-
-					tmp->min = op1_max <= op2_min;
-					tmp->max = op1_min <= op2_max;
-					return 1;
-				} else {
-					tmp->min = 0;
-					tmp->max = 1;
-					return 1;
-				}
-			}
-			break;
 		case ZEND_QM_ASSIGN:
 		case ZEND_JMP_SET:
 		case ZEND_COALESCE:
@@ -1261,13 +1121,6 @@ ZEND_API bool zend_inference_propagate_range(const zend_op_array *op_array, zend
 					tmp->overflow  = OP1_RANGE_OVERFLOW();
 					return 1;
 				}
-			}
-			break;
-		case ZEND_ASSERT_CHECK:
-			if (ssa_op->result_def == var) {
-				tmp->min = 0;
-				tmp->max = 1;
-				return 1;
 			}
 			break;
 		case ZEND_SEND_VAR:
@@ -1448,12 +1301,6 @@ ZEND_API bool zend_inference_propagate_range(const zend_op_array *op_array, zend
 						tmp->underflow = 0;
 						tmp->min = ZEND_LONG_MIN;
 						tmp->max = ZEND_LONG_MAX;
-						tmp->overflow = 0;
-						return 1;
-					} else if (mask == MAY_BE_BOOL) {
-						tmp->underflow = 0;
-						tmp->min = 0;
-						tmp->max = 1;
 						tmp->overflow = 0;
 						return 1;
 					}
@@ -2296,7 +2143,8 @@ static uint32_t zend_convert_type(const zend_script *script, zend_type type, zen
 			 * we use a plain object type for class unions. */
 			if (ZEND_TYPE_HAS_NAME(type)) {
 				zend_string *lcname = zend_string_tolower(ZEND_TYPE_NAME(type));
-				*pce = zend_optimizer_get_class_entry(script, lcname);
+				// TODO: Pass through op_array.
+				*pce = zend_optimizer_get_class_entry(script, NULL, lcname);
 				zend_string_release_ex(lcname, 0);
 			}
 		}
@@ -2384,7 +2232,7 @@ static zend_property_info *zend_fetch_static_prop_info(const zend_script *script
 			}
 		} else if (opline->op2_type == IS_CONST) {
 			zval *zv = CRT_CONSTANT(opline->op2);
-			ce = zend_optimizer_get_class_entry(script, Z_STR_P(zv + 1));
+			ce = zend_optimizer_get_class_entry(script, op_array, Z_STR_P(zv + 1));
 		}
 
 		if (ce) {
@@ -2408,6 +2256,25 @@ static uint32_t zend_fetch_prop_type(const zend_script *script, zend_property_in
 	}
 
 	return zend_convert_type(script, prop_info->type, pce);
+}
+
+static bool result_may_be_separated(zend_ssa *ssa, zend_ssa_op *ssa_op)
+{
+	int tmp_var = ssa_op->result_def;
+
+	if (ssa->vars[tmp_var].use_chain >= 0
+	 && !ssa->vars[tmp_var].phi_use_chain) {
+		zend_ssa_op *use_op = &ssa->ops[ssa->vars[tmp_var].use_chain];
+
+		/* TODO: analize instructions between ssa_op and use_op */
+		if (use_op == ssa_op + 1) {
+			if ((use_op->op1_use == tmp_var && use_op->op1_use_chain < 0)
+			 || (use_op->op2_use == tmp_var && use_op->op2_use_chain < 0)) {
+				return 0;
+			}
+		}
+	}
+	return 1;
 }
 
 static zend_always_inline zend_result _zend_update_type_info(
@@ -3168,7 +3035,7 @@ static zend_always_inline zend_result _zend_update_type_info(
 			} else if (opline->op2_type == IS_CONST) {
 				zval *zv = CRT_CONSTANT(opline->op2);
 				if (Z_TYPE_P(zv) == IS_STRING) {
-					ce = zend_optimizer_get_class_entry(script, Z_STR_P(zv+1));
+					ce = zend_optimizer_get_class_entry(script, op_array, Z_STR_P(zv+1));
 					UPDATE_SSA_OBJ_TYPE(ce, 0, ssa_op->result_def);
 				} else {
 					UPDATE_SSA_OBJ_TYPE(NULL, 0, ssa_op->result_def);
@@ -3179,8 +3046,8 @@ static zend_always_inline zend_result _zend_update_type_info(
 			break;
 		case ZEND_NEW:
 			tmp = MAY_BE_RC1|MAY_BE_RCN|MAY_BE_OBJECT;
-			if (opline->op1_type == IS_CONST &&
-			    (ce = zend_optimizer_get_class_entry(script, Z_STR_P(CRT_CONSTANT(opline->op1)+1))) != NULL) {
+			ce = zend_optimizer_get_class_entry_from_op1(script, op_array, opline);
+			if (ce) {
 				UPDATE_SSA_OBJ_TYPE(ce, 0, ssa_op->result_def);
 			} else if ((t1 & MAY_BE_CLASS) && ssa_op->op1_use >= 0 && ssa_var_info[ssa_op->op1_use].ce) {
 				UPDATE_SSA_OBJ_TYPE(ssa_var_info[ssa_op->op1_use].ce, ssa_var_info[ssa_op->op1_use].is_instanceof, ssa_op->result_def);
@@ -3224,7 +3091,9 @@ static zend_always_inline zend_result _zend_update_type_info(
 					arr_type = RES_USE_INFO();
 				}
 				tmp = MAY_BE_RC1|MAY_BE_ARRAY|arr_type;
-				if (opline->op1_type != IS_UNUSED) {
+				if (opline->op1_type != IS_UNUSED
+				 && (opline->op2_type == IS_UNUSED
+				  || (t2 & (MAY_BE_UNDEF|MAY_BE_NULL|MAY_BE_FALSE|MAY_BE_TRUE|MAY_BE_LONG|MAY_BE_DOUBLE|MAY_BE_RESOURCE|MAY_BE_STRING)))) {
 					tmp |= assign_dim_array_result_type(arr_type, t2, t1, opline->op2_type);
 					if (opline->extended_value & ZEND_ARRAY_ELEMENT_REF) {
 						tmp |= MAY_BE_ARRAY_OF_ANY|MAY_BE_ARRAY_OF_REF;
@@ -3516,11 +3385,11 @@ static zend_always_inline zend_result _zend_update_type_info(
 					if (prop_info) {
 						/* FETCH_OBJ_R/IS for plain property increments reference counter,
 						   so it can't be 1 */
-						if (ce && !ce->create_object) {
+						if (ce && !ce->create_object && !result_may_be_separated(ssa, ssa_op)) {
 							tmp &= ~MAY_BE_RC1;
 						}
 					} else {
-						if (ce && !ce->create_object && !ce->__get) {
+						if (ce && !ce->create_object && !ce->__get && !result_may_be_separated(ssa, ssa_op)) {
 							tmp &= ~MAY_BE_RC1;
 						}
 					}
@@ -3546,7 +3415,9 @@ static zend_always_inline zend_result _zend_update_type_info(
 			if (opline->result_type == IS_VAR) {
 				tmp |= MAY_BE_REF | MAY_BE_INDIRECT;
 			} else {
-				tmp &= ~MAY_BE_RC1;
+				if (!result_may_be_separated(ssa, ssa_op)) {
+					tmp &= ~MAY_BE_RC1;
+				}
 				if (opline->opcode == ZEND_FETCH_STATIC_PROP_IS) {
 					tmp |= MAY_BE_UNDEF;
 				}
@@ -3780,6 +3651,17 @@ static zend_class_entry *join_class_entries(
 	return ce1;
 }
 
+static bool safe_instanceof(zend_class_entry *ce1, zend_class_entry *ce2) {
+	if (ce1 == ce2) {
+		return 1;
+	}
+	if (!(ce1->ce_flags & ZEND_ACC_LINKED)) {
+		/* This case could be generalized, similarly to unlinked_instanceof */
+		return 0;
+	}
+	return instanceof_function(ce1, ce2);
+}
+
 static zend_result zend_infer_types_ex(const zend_op_array *op_array, const zend_script *script, zend_ssa *ssa, zend_bitset worklist, zend_long optimization_level)
 {
 	zend_basic_block *blocks = ssa->cfg.blocks;
@@ -3811,7 +3693,7 @@ static zend_result zend_infer_types_ex(const zend_op_array *op_array, const zend
 						if (!ce) {
 							ce = constraint->ce;
 							is_instanceof = 1;
-						} else if (is_instanceof && instanceof_function(constraint->ce, ce)) {
+						} else if (is_instanceof && safe_instanceof(constraint->ce, ce)) {
 							ce = constraint->ce;
 						} else {
 							/* Ignore the constraint (either ce instanceof constraint->ce or

@@ -377,6 +377,8 @@ static void ZEND_FASTCALL zend_jit_fetch_dim_r_helper(zend_array *ht, zval *dim,
 	zend_ulong hval;
 	zend_string *offset_key;
 	zval *retval;
+	zend_execute_data *execute_data;
+	const zend_op *opline;
 
 	if (Z_TYPE_P(dim) == IS_REFERENCE) {
 		dim = Z_REFVAL_P(dim);
@@ -390,16 +392,91 @@ static void ZEND_FASTCALL zend_jit_fetch_dim_r_helper(zend_array *ht, zval *dim,
 			offset_key = Z_STR_P(dim);
 			goto str_index;
 		case IS_UNDEF:
+			/* The array may be destroyed while throwing the notice.
+			 * Temporarily increase the refcount to detect this situation. */
+			if (!(GC_FLAGS(ht) & IS_ARRAY_IMMUTABLE)) {
+				GC_ADDREF(ht);
+			}
+			execute_data = EG(current_execute_data);
+			opline = EX(opline);
 			zend_jit_undefined_op_helper(EG(current_execute_data)->opline->op2.var);
+			if (!(GC_FLAGS(ht) & IS_ARRAY_IMMUTABLE) && !GC_DELREF(ht)) {
+				zend_array_destroy(ht);
+				if (opline->result_type & (IS_VAR | IS_TMP_VAR)) {
+					if (EG(exception)) {
+						ZVAL_UNDEF(EX_VAR(opline->result.var));
+					} else {
+						ZVAL_NULL(EX_VAR(opline->result.var));
+					}
+				}
+				return;
+			}
+			if (EG(exception)) {
+				if (opline->result_type & (IS_VAR | IS_TMP_VAR)) {
+					ZVAL_UNDEF(EX_VAR(opline->result.var));
+				}
+				return;
+			}
 			ZEND_FALLTHROUGH;
 		case IS_NULL:
 			offset_key = ZSTR_EMPTY_ALLOC();
 			goto str_index;
 		case IS_DOUBLE:
-			hval = zend_dval_to_lval_safe(Z_DVAL_P(dim));
+			hval = zend_dval_to_lval(Z_DVAL_P(dim));
+			if (!zend_is_long_compatible(Z_DVAL_P(dim), hval)) {
+				/* The array may be destroyed while throwing the notice.
+				 * Temporarily increase the refcount to detect this situation. */
+				if (!(GC_FLAGS(ht) & IS_ARRAY_IMMUTABLE)) {
+					GC_ADDREF(ht);
+				}
+				execute_data = EG(current_execute_data);
+				opline = EX(opline);
+				zend_incompatible_double_to_long_error(Z_DVAL_P(dim));
+				if (!(GC_FLAGS(ht) & IS_ARRAY_IMMUTABLE) && !GC_DELREF(ht)) {
+					zend_array_destroy(ht);
+					if (opline->result_type & (IS_VAR | IS_TMP_VAR)) {
+						if (EG(exception)) {
+							ZVAL_UNDEF(EX_VAR(opline->result.var));
+						} else {
+							ZVAL_NULL(EX_VAR(opline->result.var));
+						}
+					}
+					return;
+				}
+				if (EG(exception)) {
+					if (opline->result_type & (IS_VAR | IS_TMP_VAR)) {
+						ZVAL_UNDEF(EX_VAR(opline->result.var));
+					}
+					return;
+				}
+			}
 			goto num_index;
 		case IS_RESOURCE:
+			/* The array may be destroyed while throwing the notice.
+			 * Temporarily increase the refcount to detect this situation. */
+			if (!(GC_FLAGS(ht) & IS_ARRAY_IMMUTABLE)) {
+				GC_ADDREF(ht);
+			}
+			execute_data = EG(current_execute_data);
+			opline = EX(opline);
 			zend_use_resource_as_offset(dim);
+			if (!(GC_FLAGS(ht) & IS_ARRAY_IMMUTABLE) && !GC_DELREF(ht)) {
+				zend_array_destroy(ht);
+				if (opline->result_type & (IS_VAR | IS_TMP_VAR)) {
+					if (EG(exception)) {
+						ZVAL_UNDEF(EX_VAR(opline->result.var));
+					} else {
+						ZVAL_NULL(EX_VAR(opline->result.var));
+					}
+				}
+				return;
+			}
+			if (EG(exception)) {
+				if (opline->result_type & (IS_VAR | IS_TMP_VAR)) {
+					ZVAL_UNDEF(EX_VAR(opline->result.var));
+				}
+				return;
+			}
 			hval = Z_RES_HANDLE_P(dim);
 			goto num_index;
 		case IS_FALSE:
@@ -442,6 +519,8 @@ static void ZEND_FASTCALL zend_jit_fetch_dim_is_helper(zend_array *ht, zval *dim
 	zend_ulong hval;
 	zend_string *offset_key;
 	zval *retval;
+	zend_execute_data *execute_data;
+	const zend_op *opline;
 
 	if (Z_TYPE_P(dim) == IS_REFERENCE) {
 		dim = Z_REFVAL_P(dim);
@@ -455,16 +534,91 @@ static void ZEND_FASTCALL zend_jit_fetch_dim_is_helper(zend_array *ht, zval *dim
 			offset_key = Z_STR_P(dim);
 			goto str_index;
 		case IS_UNDEF:
+			/* The array may be destroyed while throwing the notice.
+			 * Temporarily increase the refcount to detect this situation. */
+			if (!(GC_FLAGS(ht) & IS_ARRAY_IMMUTABLE)) {
+				GC_ADDREF(ht);
+			}
+			execute_data = EG(current_execute_data);
+			opline = EX(opline);
 			zend_jit_undefined_op_helper(EG(current_execute_data)->opline->op2.var);
+			if (!(GC_FLAGS(ht) & IS_ARRAY_IMMUTABLE) && !GC_DELREF(ht)) {
+				zend_array_destroy(ht);
+				if (opline->result_type & (IS_VAR | IS_TMP_VAR)) {
+					if (EG(exception)) {
+						ZVAL_UNDEF(EX_VAR(opline->result.var));
+					} else {
+						ZVAL_NULL(EX_VAR(opline->result.var));
+					}
+				}
+				return;
+			}
+			if (EG(exception)) {
+				if (opline->result_type & (IS_VAR | IS_TMP_VAR)) {
+					ZVAL_UNDEF(EX_VAR(opline->result.var));
+				}
+				return;
+			}
 			ZEND_FALLTHROUGH;
 		case IS_NULL:
 			offset_key = ZSTR_EMPTY_ALLOC();
 			goto str_index;
 		case IS_DOUBLE:
-			hval = zend_dval_to_lval_safe(Z_DVAL_P(dim));
+			hval = zend_dval_to_lval(Z_DVAL_P(dim));
+			if (!zend_is_long_compatible(Z_DVAL_P(dim), hval)) {
+				/* The array may be destroyed while throwing the notice.
+				 * Temporarily increase the refcount to detect this situation. */
+				if (!(GC_FLAGS(ht) & IS_ARRAY_IMMUTABLE)) {
+					GC_ADDREF(ht);
+				}
+				execute_data = EG(current_execute_data);
+				opline = EX(opline);
+				zend_incompatible_double_to_long_error(Z_DVAL_P(dim));
+				if (!(GC_FLAGS(ht) & IS_ARRAY_IMMUTABLE) && !GC_DELREF(ht)) {
+					zend_array_destroy(ht);
+					if (opline->result_type & (IS_VAR | IS_TMP_VAR)) {
+						if (EG(exception)) {
+							ZVAL_UNDEF(EX_VAR(opline->result.var));
+						} else {
+							ZVAL_NULL(EX_VAR(opline->result.var));
+						}
+					}
+					return;
+				}
+				if (EG(exception)) {
+					if (opline->result_type & (IS_VAR | IS_TMP_VAR)) {
+						ZVAL_UNDEF(EX_VAR(opline->result.var));
+					}
+					return;
+				}
+			}
 			goto num_index;
 		case IS_RESOURCE:
+			/* The array may be destroyed while throwing the notice.
+			 * Temporarily increase the refcount to detect this situation. */
+			if (!(GC_FLAGS(ht) & IS_ARRAY_IMMUTABLE)) {
+				GC_ADDREF(ht);
+			}
+			execute_data = EG(current_execute_data);
+			opline = EX(opline);
 			zend_use_resource_as_offset(dim);
+			if (!(GC_FLAGS(ht) & IS_ARRAY_IMMUTABLE) && !GC_DELREF(ht)) {
+				zend_array_destroy(ht);
+				if (opline->result_type & (IS_VAR | IS_TMP_VAR)) {
+					if (EG(exception)) {
+						ZVAL_UNDEF(EX_VAR(opline->result.var));
+					} else {
+						ZVAL_NULL(EX_VAR(opline->result.var));
+					}
+				}
+				return;
+			}
+			if (EG(exception)) {
+				if (opline->result_type & (IS_VAR | IS_TMP_VAR)) {
+					ZVAL_UNDEF(EX_VAR(opline->result.var));
+				}
+				return;
+			}
 			hval = Z_RES_HANDLE_P(dim);
 			goto num_index;
 		case IS_FALSE:
@@ -518,16 +672,55 @@ static int ZEND_FASTCALL zend_jit_fetch_dim_isset_helper(zend_array *ht, zval *d
 			offset_key = Z_STR_P(dim);
 			goto str_index;
 		case IS_UNDEF:
+			/* The array may be destroyed while throwing the notice.
+			 * Temporarily increase the refcount to detect this situation. */
+			if (!(GC_FLAGS(ht) & IS_ARRAY_IMMUTABLE)) {
+				GC_ADDREF(ht);
+			}
 			zend_jit_undefined_op_helper(EG(current_execute_data)->opline->op2.var);
+			if (!(GC_FLAGS(ht) & IS_ARRAY_IMMUTABLE) && !GC_DELREF(ht)) {
+				zend_array_destroy(ht);
+				return 0;
+			}
+			if (EG(exception)) {
+				return 0;
+			}
 			ZEND_FALLTHROUGH;
 		case IS_NULL:
 			offset_key = ZSTR_EMPTY_ALLOC();
 			goto str_index;
 		case IS_DOUBLE:
-			hval = zend_dval_to_lval_safe(Z_DVAL_P(dim));
+			hval = zend_dval_to_lval(Z_DVAL_P(dim));
+			if (!zend_is_long_compatible(Z_DVAL_P(dim), hval)) {
+				/* The array may be destroyed while throwing the notice.
+				 * Temporarily increase the refcount to detect this situation. */
+				if (!(GC_FLAGS(ht) & IS_ARRAY_IMMUTABLE)) {
+					GC_ADDREF(ht);
+				}
+				zend_incompatible_double_to_long_error(Z_DVAL_P(dim));
+				if (!(GC_FLAGS(ht) & IS_ARRAY_IMMUTABLE) && !GC_DELREF(ht)) {
+					zend_array_destroy(ht);
+					return 0;
+				}
+				if (EG(exception)) {
+					return 0;
+				}
+			}
 			goto num_index;
 		case IS_RESOURCE:
+			/* The array may be destroyed while throwing the notice.
+			 * Temporarily increase the refcount to detect this situation. */
+			if (!(GC_FLAGS(ht) & IS_ARRAY_IMMUTABLE)) {
+				GC_ADDREF(ht);
+			}
 			zend_use_resource_as_offset(dim);
+			if (!(GC_FLAGS(ht) & IS_ARRAY_IMMUTABLE) && !GC_DELREF(ht)) {
+				zend_array_destroy(ht);
+				return 0;
+			}
+			if (EG(exception)) {
+				return 0;
+			}
 			hval = Z_RES_HANDLE_P(dim);
 			goto num_index;
 		case IS_FALSE:
@@ -730,10 +923,61 @@ static zval* ZEND_FASTCALL zend_jit_fetch_dim_w_helper(zend_array *ht, zval *dim
 			offset_key = ZSTR_EMPTY_ALLOC();
 			goto str_index;
 		case IS_DOUBLE:
-			hval = zend_dval_to_lval_safe(Z_DVAL_P(dim));
+			hval = zend_dval_to_lval(Z_DVAL_P(dim));
+			if (!zend_is_long_compatible(Z_DVAL_P(dim), hval)) {
+				/* The array may be destroyed while throwing the notice.
+				 * Temporarily increase the refcount to detect this situation. */
+				if (!(GC_FLAGS(ht) & IS_ARRAY_IMMUTABLE)) {
+					GC_ADDREF(ht);
+				}
+				execute_data = EG(current_execute_data);
+				opline = EX(opline);
+				zend_incompatible_double_to_long_error(Z_DVAL_P(dim));
+				if (!(GC_FLAGS(ht) & IS_ARRAY_IMMUTABLE) && !GC_DELREF(ht)) {
+					zend_array_destroy(ht);
+					if (opline->result_type & (IS_VAR | IS_TMP_VAR)) {
+						if (EG(exception)) {
+							ZVAL_UNDEF(EX_VAR(opline->result.var));
+						} else {
+							ZVAL_NULL(EX_VAR(opline->result.var));
+						}
+					}
+					return NULL;
+				}
+				if (EG(exception)) {
+					if (opline->result_type & (IS_VAR | IS_TMP_VAR)) {
+						ZVAL_UNDEF(EX_VAR(opline->result.var));
+					}
+					return NULL;
+				}
+			}
 			goto num_index;
 		case IS_RESOURCE:
+			/* The array may be destroyed while throwing the notice.
+			 * Temporarily increase the refcount to detect this situation. */
+			if (!(GC_FLAGS(ht) & IS_ARRAY_IMMUTABLE)) {
+				GC_ADDREF(ht);
+			}
+			execute_data = EG(current_execute_data);
+			opline = EX(opline);
 			zend_use_resource_as_offset(dim);
+			if (!(GC_FLAGS(ht) & IS_ARRAY_IMMUTABLE) && !GC_DELREF(ht)) {
+				zend_array_destroy(ht);
+				if (opline->result_type & (IS_VAR | IS_TMP_VAR)) {
+					if (EG(exception)) {
+						ZVAL_UNDEF(EX_VAR(opline->result.var));
+					} else {
+						ZVAL_NULL(EX_VAR(opline->result.var));
+					}
+				}
+				return NULL;
+			}
+			if (EG(exception)) {
+				if (opline->result_type & (IS_VAR | IS_TMP_VAR)) {
+					ZVAL_UNDEF(EX_VAR(opline->result.var));
+				}
+				return NULL;
+			}
 			hval = Z_RES_HANDLE_P(dim);
 			goto num_index;
 		case IS_FALSE:
@@ -904,13 +1148,15 @@ try_string_offset:
 static void ZEND_FASTCALL zend_jit_fetch_dim_obj_r_helper(zval *container, zval *dim, zval *result)
 {
 	zval *retval;
+	zend_object *obj = Z_OBJ_P(container);
 
+	GC_ADDREF(obj);
 	if (UNEXPECTED(Z_TYPE_P(dim) == IS_UNDEF)) {
 		zend_jit_undefined_op_helper(EG(current_execute_data)->opline->op2.var);
 		dim = &EG(uninitialized_zval);
 	}
 
-	retval = Z_OBJ_HT_P(container)->read_dimension(Z_OBJ_P(container), dim, BP_VAR_R, result);
+	retval = obj->handlers->read_dimension(obj, dim, BP_VAR_R, result);
 
 	if (retval) {
 		if (result != retval) {
@@ -921,18 +1167,23 @@ static void ZEND_FASTCALL zend_jit_fetch_dim_obj_r_helper(zval *container, zval 
 	} else {
 		ZVAL_NULL(result);
 	}
+	if (UNEXPECTED(GC_DELREF(obj) == 0)) {
+		zend_objects_store_del(obj);
+	}
 }
 
 static void ZEND_FASTCALL zend_jit_fetch_dim_obj_is_helper(zval *container, zval *dim, zval *result)
 {
 	zval *retval;
+	zend_object *obj = Z_OBJ_P(container);
 
+	GC_ADDREF(obj);
 	if (UNEXPECTED(Z_TYPE_P(dim) == IS_UNDEF)) {
 		zend_jit_undefined_op_helper(EG(current_execute_data)->opline->op2.var);
 		dim = &EG(uninitialized_zval);
 	}
 
-	retval = Z_OBJ_HT_P(container)->read_dimension(Z_OBJ_P(container), dim, BP_VAR_IS, result);
+	retval = obj->handlers->read_dimension(obj, dim, BP_VAR_IS, result);
 
 	if (retval) {
 		if (result != retval) {
@@ -942,6 +1193,9 @@ static void ZEND_FASTCALL zend_jit_fetch_dim_obj_is_helper(zval *container, zval
 		}
 	} else {
 		ZVAL_NULL(result);
+	}
+	if (UNEXPECTED(GC_DELREF(obj) == 0)) {
+		zend_objects_store_del(obj);
 	}
 }
 
@@ -1103,16 +1357,11 @@ static zend_always_inline void ZEND_FASTCALL zend_jit_fetch_dim_obj_helper(zval 
 	if (EXPECTED(Z_TYPE_P(object_ptr) == IS_OBJECT)) {
 		zend_object *obj = Z_OBJ_P(object_ptr);
 
+		GC_ADDREF(obj);
 		if (dim && UNEXPECTED(Z_ISUNDEF_P(dim))) {
 			const zend_op *opline = EG(current_execute_data)->opline;
-			GC_ADDREF(obj);
 			zend_jit_undefined_op_helper(opline->op2.var);
 			dim = &EG(uninitialized_zval);
-			if (UNEXPECTED(GC_DELREF(obj) == 0)) {
-				zend_objects_store_del(obj);
-				ZVAL_NULL(result);
-				return;
-			}
 		}
 
 		retval = obj->handlers->read_dimension(obj, dim, type, result);
@@ -1140,6 +1389,9 @@ static zend_always_inline void ZEND_FASTCALL zend_jit_fetch_dim_obj_helper(zval 
 		} else {
 			ZEND_ASSERT(EG(exception) && "read_dimension() returned NULL without exception");
 			ZVAL_UNDEF(result);
+		}
+		if (UNEXPECTED(GC_DELREF(obj) == 0)) {
+			zend_objects_store_del(obj);
 		}
 	} else if (EXPECTED(Z_TYPE_P(object_ptr) == IS_STRING)) {
 		if (!dim) {
@@ -1208,44 +1460,32 @@ static void ZEND_FASTCALL zend_jit_assign_dim_helper(zval *object_ptr, zval *dim
 	if (EXPECTED(Z_TYPE_P(object_ptr) == IS_OBJECT)) {
 		zend_object *obj = Z_OBJ_P(object_ptr);
 
+		GC_ADDREF(obj);
 		if (dim && UNEXPECTED(Z_TYPE_P(dim) == IS_UNDEF)) {
 			const zend_op *opline = EG(current_execute_data)->opline;
-			GC_ADDREF(obj);
 			zend_jit_undefined_op_helper(opline->op2.var);
 			dim = &EG(uninitialized_zval);
-			if (UNEXPECTED(GC_DELREF(obj) == 0)) {
-				zend_objects_store_del(obj);
-				if (result) {
-					ZVAL_NULL(result);
-				}
-				return;
-			}
 		}
 
 		if (UNEXPECTED(Z_TYPE_P(value) == IS_UNDEF)) {
 			const zend_op *op_data = EG(current_execute_data)->opline + 1;
 			ZEND_ASSERT(op_data->opcode == ZEND_OP_DATA && op_data->op1_type == IS_CV);
-			GC_ADDREF(obj);
 			zend_jit_undefined_op_helper(op_data->op1.var);
 			value = &EG(uninitialized_zval);
-			if (UNEXPECTED(GC_DELREF(obj) == 0)) {
-				zend_objects_store_del(obj);
-				if (result) {
-					ZVAL_NULL(result);
-				}
-				return;
-			}
 		} else {
 			ZVAL_DEREF(value);
 		}
 
-		Z_OBJ_HT_P(object_ptr)->write_dimension(obj, dim, value);
+		obj->handlers->write_dimension(obj, dim, value);
 		if (result) {
 			if (EXPECTED(!EG(exception))) {
 				ZVAL_COPY(result, value);
 			} else {
 				ZVAL_UNDEF(result);
 			}
+		}
+		if (UNEXPECTED(GC_DELREF(obj) == 0)) {
+			zend_objects_store_del(obj);
 		}
 		return;
 	} else if (EXPECTED(Z_TYPE_P(object_ptr) == IS_STRING) && EXPECTED(dim != NULL)) {
@@ -1311,18 +1551,11 @@ static void ZEND_FASTCALL zend_jit_assign_dim_op_helper(zval *container, zval *d
 		zval *z;
 		zval rv, res;
 
+		GC_ADDREF(obj);
 		if (dim && UNEXPECTED(Z_ISUNDEF_P(dim))) {
 			const zend_op *opline = EG(current_execute_data)->opline;
-			GC_ADDREF(obj);
 			zend_jit_undefined_op_helper(opline->op2.var);
 			dim = &EG(uninitialized_zval);
-			if (UNEXPECTED(GC_DELREF(obj) == 0)) {
-				zend_objects_store_del(obj);
-//???			if (retval) {
-//???				ZVAL_NULL(retval);
-//???			}
-				return;
-			}
 		}
 
 		z = obj->handlers->read_dimension(obj, dim, BP_VAR_R, &rv);
@@ -1337,6 +1570,12 @@ static void ZEND_FASTCALL zend_jit_assign_dim_op_helper(zval *container, zval *d
 			zval_ptr_dtor(&res);
 		} else {
 			zend_error(E_WARNING, "Attempt to assign property of non-object");
+		}
+		if (UNEXPECTED(GC_DELREF(obj) == 0)) {
+			zend_objects_store_del(obj);
+//???		if (retval) {
+//???			ZVAL_NULL(retval);
+//???		}
 		}
 	} else if (UNEXPECTED(Z_TYPE_P(container) == IS_STRING)) {
 		if (!dim) {
@@ -1506,11 +1745,10 @@ static zend_reference* ZEND_FASTCALL zend_jit_fetch_global_helper(zend_string *v
 	if (EXPECTED(idx < EG(symbol_table).nNumUsed * sizeof(Bucket))) {
 		Bucket *p = (Bucket*)((char*)EG(symbol_table).arData + idx);
 
-		if (EXPECTED(Z_TYPE(p->val) != IS_UNDEF) &&
-	        (EXPECTED(p->key == varname) ||
-	         (EXPECTED(p->h == ZSTR_H(varname)) &&
-	          EXPECTED(p->key != NULL) &&
-	          EXPECTED(zend_string_equal_content(p->key, varname))))) {
+		if (EXPECTED(p->key == varname) ||
+	        (EXPECTED(p->h == ZSTR_H(varname)) &&
+	         EXPECTED(p->key != NULL) &&
+	         EXPECTED(zend_string_equal_content(p->key, varname)))) {
 
 			value = (zval*)p; /* value = &p->val; */
 			goto check_indirect;
@@ -1603,12 +1841,10 @@ static void ZEND_FASTCALL zend_jit_fetch_obj_r_dynamic(zend_object *zobj, intptr
 			if (EXPECTED(idx < zobj->properties->nNumUsed * sizeof(Bucket))) {
 				Bucket *p = (Bucket*)((char*)zobj->properties->arData + idx);
 
-				if (EXPECTED(Z_TYPE(p->val) != IS_UNDEF) &&
-			        (EXPECTED(p->key == name) ||
-			         (EXPECTED(p->h == ZSTR_H(name)) &&
-			          EXPECTED(p->key != NULL) &&
-			          EXPECTED(ZSTR_LEN(p->key) == ZSTR_LEN(name)) &&
-			          EXPECTED(memcmp(ZSTR_VAL(p->key), ZSTR_VAL(name), ZSTR_LEN(name)) == 0)))) {
+				if (EXPECTED(p->key == name) ||
+			        (EXPECTED(p->h == ZSTR_H(name)) &&
+			         EXPECTED(p->key != NULL) &&
+			         EXPECTED(zend_string_equal_content(p->key, name)))) {
 					ZVAL_COPY_DEREF(result, &p->val);
 					return;
 				}
@@ -1661,12 +1897,10 @@ static void ZEND_FASTCALL zend_jit_fetch_obj_is_dynamic(zend_object *zobj, intpt
 			if (EXPECTED(idx < zobj->properties->nNumUsed * sizeof(Bucket))) {
 				Bucket *p = (Bucket*)((char*)zobj->properties->arData + idx);
 
-				if (EXPECTED(Z_TYPE(p->val) != IS_UNDEF) &&
-			        (EXPECTED(p->key == name) ||
-			         (EXPECTED(p->h == ZSTR_H(name)) &&
-			          EXPECTED(p->key != NULL) &&
-			          EXPECTED(ZSTR_LEN(p->key) == ZSTR_LEN(name)) &&
-			          EXPECTED(memcmp(ZSTR_VAL(p->key), ZSTR_VAL(name), ZSTR_LEN(name)) == 0)))) {
+				if (EXPECTED(p->key == name) ||
+			        (EXPECTED(p->h == ZSTR_H(name)) &&
+			         EXPECTED(p->key != NULL) &&
+			         EXPECTED(zend_string_equal_content(p->key, name)))) {
 					ZVAL_COPY_DEREF(result, &p->val);
 					return;
 				}
