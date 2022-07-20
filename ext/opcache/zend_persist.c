@@ -336,39 +336,10 @@ uint32_t zend_accel_get_class_name_map_ptr(zend_string *type_name)
 	return 0;
 }
 
-static HashTable *zend_persist_backed_enum_table(HashTable *backed_enum_table)
-{
-	HashTable *ptr;
-	zend_hash_persist(backed_enum_table);
-
-	if (HT_IS_PACKED(backed_enum_table)) {
-		zval *zv;
-
-		ZEND_HASH_PACKED_FOREACH_VAL(backed_enum_table, zv) {
-			zend_persist_zval(zv);
-		} ZEND_HASH_FOREACH_END();
-	} else {
-		Bucket *p;
-
-		ZEND_HASH_MAP_FOREACH_BUCKET(backed_enum_table, p) {
-			if (p->key != NULL) {
-				zend_accel_store_interned_string(p->key);
-			}
-			zend_persist_zval(&p->val);
-		} ZEND_HASH_FOREACH_END();
-	}
-
-	ptr = zend_shared_memdup_free(backed_enum_table, sizeof(HashTable));
-	GC_SET_REFCOUNT(ptr, 2);
-	GC_TYPE_INFO(ptr) = GC_ARRAY | ((IS_ARRAY_IMMUTABLE|GC_NOT_COLLECTABLE) << GC_FLAGS_SHIFT);
-
-	return ptr;
-}
-
 static void zend_persist_type(zend_type *type) {
 	if (ZEND_TYPE_HAS_LIST(*type)) {
 		zend_type_list *list = ZEND_TYPE_LIST(*type);
-		if (ZEND_TYPE_USES_ARENA(*type)) {
+		if (ZEND_TYPE_USES_ARENA(*type) || zend_accel_in_shm(list)) {
 			list = zend_shared_memdup_put(list, ZEND_TYPE_LIST_SIZE(list->num_types));
 			ZEND_TYPE_FULL_MASK(*type) &= ~_ZEND_TYPE_ARENA_BIT;
 		} else {
@@ -379,6 +350,10 @@ static void zend_persist_type(zend_type *type) {
 
 	zend_type *single_type;
 	ZEND_TYPE_FOREACH(*type, single_type) {
+		if (ZEND_TYPE_HAS_LIST(*single_type)) {
+			zend_persist_type(single_type);
+			continue;
+		}
 		if (ZEND_TYPE_HAS_NAME(*single_type)) {
 			zend_string *type_name = ZEND_TYPE_NAME(*single_type);
 			zend_accel_store_interned_string(type_name);
@@ -590,9 +565,6 @@ static void zend_persist_op_array_ex(zend_op_array *op_array, zend_persistent_sc
 					case ZEND_FAST_CALL:
 						opline->op1.jmp_addr = &new_opcodes[opline->op1.jmp_addr - op_array->opcodes];
 						break;
-					case ZEND_JMPZNZ:
-						/* relative extended_value don't have to be changed */
-						/* break omitted intentionally */
 					case ZEND_JMPZ:
 					case ZEND_JMPNZ:
 					case ZEND_JMPZ_EX:
@@ -1075,9 +1047,7 @@ zend_class_entry *zend_persist_class_entry(zend_class_entry *orig_ce)
 			}
 		}
 
-		if (ce->backed_enum_table) {
-			ce->backed_enum_table = zend_persist_backed_enum_table(ce->backed_enum_table);
-		}
+		ZEND_ASSERT(ce->backed_enum_table == NULL);
 	}
 
 	return ce;
@@ -1334,12 +1304,12 @@ zend_persistent_script *zend_accel_script_persist(zend_persistent_script *script
 	ZEND_ASSERT(((zend_uintptr_t)ZCG(mem) & 0x7) == 0); /* should be 8 byte aligned */
 
 	script = zend_shared_memdup_free(script, sizeof(zend_persistent_script));
-	script->corrupted = 0;
+	script->corrupted = false;
 	ZCG(current_persistent_script) = script;
 
 	if (!for_shm) {
 		/* script is not going to be saved in SHM */
-		script->corrupted = 1;
+		script->corrupted = true;
 	}
 
 	zend_accel_store_interned_string(script->script.filename);
@@ -1395,7 +1365,7 @@ zend_persistent_script *zend_accel_script_persist(zend_persistent_script *script
 	}
 #endif
 
-	script->corrupted = 0;
+	script->corrupted = false;
 	ZCG(current_persistent_script) = NULL;
 
 	return script;

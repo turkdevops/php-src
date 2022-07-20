@@ -281,7 +281,7 @@ static int php_zlib_output_handler(void **handler_context, php_output_context *o
 		return FAILURE;
 	}
 
-	if (!(output_context->op & PHP_OUTPUT_HANDLER_CLEAN)) {
+	if (!(output_context->op & PHP_OUTPUT_HANDLER_CLEAN) || ((output_context->op & PHP_OUTPUT_HANDLER_START) && !(output_context->op & PHP_OUTPUT_HANDLER_FINAL))) {
 		int flags;
 
 		if (SUCCESS == php_output_handler_hook(PHP_OUTPUT_HANDLER_HOOK_GET_FLAGS, &flags)) {
@@ -1277,7 +1277,7 @@ static PHP_INI_MH(OnUpdate_zlib_output_compression)
 	} else if (zend_string_equals_literal_ci(new_value, "on")) {
 		int_value = 1;
 	} else {
-		int_value = zend_atoi(ZSTR_VAL(new_value), ZSTR_LEN(new_value));
+		int_value = (int) zend_ini_parse_quantity_warn(new_value, entry->name);
 	}
 	ini_value = zend_ini_string("output_handler", sizeof("output_handler"), 0);
 

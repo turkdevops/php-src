@@ -34,6 +34,7 @@
 #include "pcntl_arginfo.h"
 #include "php_signal.h"
 #include "php_ticks.h"
+#include "zend_fibers.h"
 
 #if defined(HAVE_GETPRIORITY) || defined(HAVE_SETPRIORITY) || defined(HAVE_WAIT3)
 #include <sys/wait.h>
@@ -152,7 +153,9 @@ void php_register_signal_constants(INIT_FUNC_ARGS)
 #ifdef SIGPOLL
 	REGISTER_LONG_CONSTANT("SIGPOLL",  (zend_long) SIGPOLL, CONST_CS | CONST_PERSISTENT);
 #endif
+#ifdef SIGIO
 	REGISTER_LONG_CONSTANT("SIGIO",    (zend_long) SIGIO, CONST_CS | CONST_PERSISTENT);
+#endif
 #ifdef SIGPWR
 	REGISTER_LONG_CONSTANT("SIGPWR",   (zend_long) SIGPWR, CONST_CS | CONST_PERSISTENT);
 #endif
@@ -1224,7 +1227,7 @@ static void pcntl_siginfo_to_zval(int signo, siginfo_t *siginfo, zval *user_sigi
 			case SIGBUS:
 				add_assoc_double_ex(user_siginfo, "addr", sizeof("addr")-1, (zend_long)siginfo->si_addr);
 				break;
-#ifdef SIGPOLL
+#if defined(SIGPOLL) && !defined(__CYGWIN__)
 			case SIGPOLL:
 				add_assoc_long_ex(user_siginfo, "band", sizeof("band")-1, siginfo->si_band);
 # ifdef si_fd
@@ -1383,7 +1386,7 @@ static void pcntl_signal_handler(int signo)
 	PCNTL_G(tail) = psig;
 	PCNTL_G(pending_signals) = 1;
 	if (PCNTL_G(async_signals)) {
-		EG(vm_interrupt) = 1;
+		zend_atomic_bool_store_ex(&EG(vm_interrupt), true);
 	}
 }
 
@@ -1407,6 +1410,9 @@ void pcntl_signal_dispatch()
 		sigprocmask(SIG_SETMASK, &old_mask, NULL);
 		return;
 	}
+
+	/* Prevent switching fibers when handling signals */
+	zend_fiber_switch_block();
 
 	/* Prevent reentrant handler calls */
 	PCNTL_G(processing_signal_queue) = 1;
@@ -1447,6 +1453,9 @@ void pcntl_signal_dispatch()
 
 	/* Re-enable queue */
 	PCNTL_G(processing_signal_queue) = 0;
+
+	/* Re-enable fiber switching */
+	zend_fiber_switch_unblock();
 
 	/* return signal mask to previous state */
 	sigprocmask(SIG_SETMASK, &old_mask, NULL);
@@ -1563,9 +1572,11 @@ PHP_FUNCTION(pcntl_rfork)
 		flags |= RFPROC;
 	}
 
+#ifdef RFTSIGZMB
 	if ((flags & RFTSIGZMB) != 0) {
 		flags |= RFTSIGFLAGS(csignal);
 	}
+#endif
 
 	pid = rfork(flags);
 

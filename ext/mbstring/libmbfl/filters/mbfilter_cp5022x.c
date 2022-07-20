@@ -25,11 +25,11 @@
 #include "mbfilter.h"
 #include "mbfilter_cp5022x.h"
 #include "mbfilter_jis.h"
-#include "mbfilter_tl_jisx0201_jisx0208.h"
 
 #include "unicode_table_cp932_ext.h"
 #include "unicode_table_jis.h"
 #include "cp932_table.h"
+#include "translit_kana_jisx0201_jisx0208.h"
 
 static int mbfl_filt_conv_cp5022x_wchar_flush(mbfl_convert_filter *filter);
 static int mbfl_filt_conv_wchar_cp50220_flush(mbfl_convert_filter *filter);
@@ -39,6 +39,9 @@ static size_t mb_cp5022x_to_wchar(unsigned char **in, size_t *in_len, uint32_t *
 static void mb_wchar_to_cp50220(uint32_t *in, size_t len, mb_convert_buf *buf, bool end);
 static void mb_wchar_to_cp50221(uint32_t *in, size_t len, mb_convert_buf *buf, bool end);
 static void mb_wchar_to_cp50222(uint32_t *in, size_t len, mb_convert_buf *buf, bool end);
+
+/* See mbstring.c */
+uint32_t mb_convert_kana_codepoint(uint32_t c, uint32_t next, bool *consumed, uint32_t *second, int mode);
 
 /* Previously, a dubious 'encoding' called 'cp50220raw' was supported
  * This was just CP50220, but the implementation was less strict regarding
@@ -336,9 +339,13 @@ static int mbfl_filt_conv_wchar_cp50220(int c, mbfl_convert_filter *filter)
 	bool consumed = false;
 
 	if (filter->cache) {
-		int s = mbfl_convert_kana(filter->cache, c, &consumed, NULL, mode);
+		int s = mb_convert_kana_codepoint(filter->cache, c, &consumed, NULL, mode);
 		filter->cache = consumed ? 0 : c;
+		/* Terrible hack to get CP50220 to emit error markers in the proper
+		 * position, not reordering them with subsequent characters */
+		filter->filter_function = mbfl_filt_conv_wchar_cp50221;
 		mbfl_filt_conv_wchar_cp50221(s, filter);
+		filter->filter_function = mbfl_filt_conv_wchar_cp50220;
 	} else if (c == 0) {
 		/* This case has to be handled separately, since `filter->cache == 0` means
 		 * no codepoint is cached */
@@ -355,7 +362,7 @@ static int mbfl_filt_conv_wchar_cp50220_flush(mbfl_convert_filter *filter)
 	int mode = MBFL_HAN2ZEN_KATAKANA | MBFL_HAN2ZEN_GLUE;
 
 	if (filter->cache) {
-		int s = mbfl_convert_kana(filter->cache, 0, NULL, NULL, mode);
+		int s = mb_convert_kana_codepoint(filter->cache, 0, NULL, NULL, mode);
 		mbfl_filt_conv_wchar_cp50221(s, filter);
 		filter->cache = 0;
 	}
@@ -640,6 +647,8 @@ static int mbfl_filt_conv_wchar_cp50222_flush(mbfl_convert_filter *filter)
 
 static size_t mb_cp5022x_to_wchar(unsigned char **in, size_t *in_len, uint32_t *buf, size_t bufsize, unsigned int *state)
 {
+	ZEND_ASSERT(bufsize >= 3);
+
 	unsigned char *p = *in, *e = p + *in_len;
 	uint32_t *out = buf, *limit = buf + bufsize;
 
@@ -841,11 +850,27 @@ static void mb_wchar_to_cp50220(uint32_t *in, size_t len, mb_convert_buf *buf, b
 	MB_CONVERT_BUF_ENSURE(buf, out, limit, len);
 
 	bool consumed = false;
+	uint32_t w;
+
+	if (buf->state & 0xFFFF00) {
+		/* Reprocess cached codepoint */
+		w = buf->state >> 8;
+		buf->state &= 0xFF;
+		goto reprocess_codepoint;
+	}
 
 	while (len--) {
-		uint32_t w = *in++;
+		w = *in++;
+reprocess_codepoint:
 
-		w = mbfl_convert_kana(w, len ? *in : 0, &consumed, NULL, MBFL_HAN2ZEN_KATAKANA | MBFL_HAN2ZEN_GLUE);
+		if (w >= 0xFF61 && w <= 0xFF9F && !len && !end) {
+			/* This codepoint may need to combine with the next one,
+			 * but the 'next one' will come in a separate buffer */
+			buf->state |= w << 8;
+			break;
+		} else {
+			w = mb_convert_kana_codepoint(w, len ? *in : 0, &consumed, NULL, MBFL_HAN2ZEN_KATAKANA | MBFL_HAN2ZEN_GLUE);
+		}
 
 		if (consumed) {
 			/* Two successive codepoints were converted into one */
@@ -991,7 +1016,7 @@ static void mb_wchar_to_cp50222(uint32_t *in, size_t len, mb_convert_buf *buf, b
 			out = mb_convert_buf_add(out, s - 0x80);
 		} else if (s <= 0x927E) {
 			/* JISX 0208 Kanji */
-			MB_CONVERT_BUF_ENSURE(buf, out, limit, len + 5);
+			MB_CONVERT_BUF_ENSURE(buf, out, limit, len + 6);
 			if (buf->state == JISX_0201_KANA) {
 				out = mb_convert_buf_add(out, 0xF);
 			}
@@ -1002,7 +1027,7 @@ static void mb_wchar_to_cp50222(uint32_t *in, size_t len, mb_convert_buf *buf, b
 			out = mb_convert_buf_add2(out, (s >> 8) & 0xFF, s & 0xFF);
 		} else if (s >= 0x10000) {
 			/* JISX 0201 Latin; we 'tag' these by adding 0x10000 */
-			MB_CONVERT_BUF_ENSURE(buf, out, limit, len + 4);
+			MB_CONVERT_BUF_ENSURE(buf, out, limit, len + 5);
 			if (buf->state == JISX_0201_KANA) {
 				out = mb_convert_buf_add(out, 0xF);
 			}

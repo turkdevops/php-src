@@ -20,7 +20,7 @@
 
 #include "php.h"
 
-#if DBA_LMDB
+#ifdef DBA_LMDB
 #include "php_lmdb.h"
 
 #ifdef LMDB_INCLUDE_FILE
@@ -243,6 +243,7 @@ DBA_DELETE_FUNC(lmdb)
 
 	php_error_docref(NULL, E_WARNING, "%s", mdb_strerror(rc));
 
+	mdb_txn_abort(LMDB_IT(txn));
 	return FAILURE;
 }
 

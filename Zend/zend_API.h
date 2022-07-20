@@ -321,6 +321,9 @@ typedef struct _zend_fcall_info_cache {
 #define CE_DEFAULT_PROPERTIES_TABLE(ce) \
 	zend_class_default_properties_table(ce)
 
+#define CE_BACKED_ENUM_TABLE(ce) \
+	zend_class_backed_enum_table(ce)
+
 #define ZEND_FCI_INITIALIZED(fci) ((fci).size != 0)
 
 ZEND_API int zend_next_free_module(void);
@@ -388,8 +391,10 @@ ZEND_API void zend_disable_functions(const char *function_list);
 ZEND_API zend_result zend_disable_class(const char *class_name, size_t class_name_length);
 
 ZEND_API ZEND_COLD void zend_wrong_param_count(void);
+ZEND_API ZEND_COLD void zend_wrong_property_read(zval *object, zval *property);
 
 #define IS_CALLABLE_CHECK_SYNTAX_ONLY (1<<0)
+#define IS_CALLABLE_SUPPRESS_DEPRECATIONS (1<<1)
 
 ZEND_API void zend_release_fcall_info_cache(zend_fcall_info_cache *fcc);
 ZEND_API zend_string *zend_get_callable_name_ex(zval *callable, zend_object *object);
@@ -447,6 +452,26 @@ static zend_always_inline zval *zend_class_default_properties_table(zend_class_e
 		return mutable_data->default_properties_table;
 	} else {
 		return ce->default_properties_table;
+	}
+}
+
+static zend_always_inline void zend_class_set_backed_enum_table(zend_class_entry *ce, HashTable *backed_enum_table)
+{
+	if (ZEND_MAP_PTR(ce->mutable_data) && ce->type == ZEND_USER_CLASS) {
+		zend_class_mutable_data *mutable_data = (zend_class_mutable_data*)ZEND_MAP_PTR_GET_IMM(ce->mutable_data);
+		mutable_data->backed_enum_table = backed_enum_table;
+	} else {
+		ce->backed_enum_table = backed_enum_table;
+	}
+}
+
+static zend_always_inline HashTable *zend_class_backed_enum_table(zend_class_entry *ce)
+{
+	if (ZEND_MAP_PTR(ce->mutable_data) && ce->type == ZEND_USER_CLASS) {
+		zend_class_mutable_data *mutable_data = (zend_class_mutable_data*)ZEND_MAP_PTR_GET_IMM(ce->mutable_data);
+		return mutable_data->backed_enum_table;
+	} else {
+		return ce->backed_enum_table;
 	}
 }
 
@@ -714,14 +739,27 @@ static zend_always_inline zend_result zend_forbid_dynamic_call(void)
 	ZEND_ASSERT(ex != NULL && ex->func != NULL);
 
 	if (ZEND_CALL_INFO(ex) & ZEND_CALL_DYNAMIC) {
-		zend_throw_error(NULL, "Cannot call %s() dynamically", get_active_function_name());
+		zend_string *function_or_method_name = get_active_function_or_method_name();
+		zend_throw_error(NULL, "Cannot call %.*s() dynamically",
+			(int) ZSTR_LEN(function_or_method_name), ZSTR_VAL(function_or_method_name));
+		zend_string_release(function_or_method_name);
 		return FAILURE;
 	}
 
 	return SUCCESS;
 }
 
-ZEND_API ZEND_COLD const char *zend_get_object_type(const zend_class_entry *ce);
+ZEND_API ZEND_COLD const char *zend_get_object_type_case(const zend_class_entry *ce, bool upper_case);
+
+static zend_always_inline const char *zend_get_object_type(const zend_class_entry *ce)
+{
+	return zend_get_object_type_case(ce, false);
+}
+
+static zend_always_inline const char *zend_get_object_type_uc(const zend_class_entry *ce)
+{
+	return zend_get_object_type_case(ce, true);
+}
 
 ZEND_API bool zend_is_iterable(zval *iterable);
 
@@ -1306,8 +1344,8 @@ static zend_always_inline zval *zend_try_array_init(zval *zv)
 	_(Z_EXPECTED_ARRAY_OR_NULL,		"of type ?array") \
 	_(Z_EXPECTED_ARRAY_OR_LONG,		"of type array|int") \
 	_(Z_EXPECTED_ARRAY_OR_LONG_OR_NULL, "of type array|int|null") \
-	_(Z_EXPECTED_ITERABLE,				"of type iterable") \
-	_(Z_EXPECTED_ITERABLE_OR_NULL,		"of type ?iterable") \
+	_(Z_EXPECTED_ITERABLE,				"of type Traversable|array") \
+	_(Z_EXPECTED_ITERABLE_OR_NULL,		"of type Traversable|array|null") \
 	_(Z_EXPECTED_FUNC,				"a valid callback") \
 	_(Z_EXPECTED_FUNC_OR_NULL,		"a valid callback or null") \
 	_(Z_EXPECTED_RESOURCE,			"of type resource") \
@@ -1352,6 +1390,7 @@ ZEND_API ZEND_COLD void ZEND_FASTCALL zend_wrong_parameter_class_or_string_or_nu
 ZEND_API ZEND_COLD void ZEND_FASTCALL zend_wrong_callback_error(uint32_t num, char *error);
 ZEND_API ZEND_COLD void ZEND_FASTCALL zend_wrong_callback_or_null_error(uint32_t num, char *error);
 ZEND_API ZEND_COLD void ZEND_FASTCALL zend_unexpected_extra_named_error(void);
+ZEND_API ZEND_COLD void ZEND_FASTCALL zend_argument_error_variadic(zend_class_entry *error_ce, uint32_t arg_num, const char *format, va_list va);
 ZEND_API ZEND_COLD void zend_argument_error(zend_class_entry *error_ce, uint32_t arg_num, const char *format, ...);
 ZEND_API ZEND_COLD void zend_argument_type_error(uint32_t arg_num, const char *format, ...);
 ZEND_API ZEND_COLD void zend_argument_value_error(uint32_t arg_num, const char *format, ...);

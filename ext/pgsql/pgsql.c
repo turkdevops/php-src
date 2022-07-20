@@ -1201,7 +1201,7 @@ PHP_FUNCTION(pg_query_params)
 			} else {
 				zend_string *param_str = zval_try_get_string(tmp);
 				if (!param_str) {
-					_php_pgsql_free_params(params, num_params);
+					_php_pgsql_free_params(params, i);
 					RETURN_THROWS();
 				}
 				params[i] = estrndup(ZSTR_VAL(param_str), ZSTR_LEN(param_str));
@@ -2021,7 +2021,7 @@ PHP_FUNCTION(pg_fetch_object)
 PHP_FUNCTION(pg_fetch_all)
 {
 	zval *result;
-	long result_type = PGSQL_ASSOC;
+	zend_long result_type = PGSQL_ASSOC;
 	PGresult *pgsql_result;
 	pgsql_result_handle *pg_result;
 
@@ -3918,8 +3918,8 @@ PHP_FUNCTION(pg_send_execute)
 				params[i] = NULL;
 			} else {
 				zend_string *tmp_str = zval_try_get_string(tmp);
-				if (UNEXPECTED(!tmp)) {
-					_php_pgsql_free_params(params, num_params);
+				if (UNEXPECTED(!tmp_str)) {
+					_php_pgsql_free_params(params, i);
 					return;
 				}
 				params[i] = estrndup(ZSTR_VAL(tmp_str), ZSTR_LEN(tmp_str));
@@ -4584,6 +4584,7 @@ PHP_PGSQL_API zend_result php_pgsql_convert(PGconn *pg_link, const zend_string *
 
 	ZEND_HASH_FOREACH_STR_KEY_VAL(Z_ARRVAL_P(values), field, val) {
 		skip_field = 0;
+		ZVAL_DEREF(val);
 		ZVAL_NULL(&new_val);
 
 		/* TODO: Check when meta data can be broken and see if can use assertions instead */
@@ -5879,7 +5880,7 @@ PHP_FUNCTION(pg_select)
 	pgsql_link_handle *link;
 	zend_string *table;
 	zend_ulong option = PGSQL_DML_EXEC;
-	long result_type = PGSQL_ASSOC;
+	zend_long result_type = PGSQL_ASSOC;
 	PGconn *pg_link;
 	zend_string *sql = NULL;
 

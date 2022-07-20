@@ -184,6 +184,9 @@ zend_result zend_optimizer_eval_special_func_call(
 	if (zend_string_equals_literal(name, "ini_get")) {
 		zend_ini_entry *ini_entry = zend_hash_find_ptr(EG(ini_directives), arg);
 		if (!ini_entry) {
+			if (PG(enable_dl)) {
+				return FAILURE;
+			}
 			ZVAL_FALSE(result);
 		} else if (ini_entry->modifiable != ZEND_INI_SYSTEM) {
 			return FAILURE;
@@ -413,6 +416,8 @@ bool zend_optimizer_update_op1_const(zend_op_array *op_array,
 		case ZEND_FETCH_IS:
 		case ZEND_FETCH_UNSET:
 		case ZEND_FETCH_FUNC_ARG:
+		case ZEND_ISSET_ISEMPTY_VAR:
+		case ZEND_UNSET_VAR:
 			TO_STRING_NOWARN(val);
 			if (opline->opcode == ZEND_CONCAT && opline->op2_type == IS_CONST) {
 				opline->opcode = ZEND_FAST_CONCAT;
@@ -704,9 +709,6 @@ void zend_optimizer_migrate_jump(zend_op_array *op_array, zend_op *new_opline, z
 		case ZEND_FAST_CALL:
 			ZEND_SET_OP_JMP_ADDR(new_opline, new_opline->op1, ZEND_OP1_JMP_ADDR(opline));
 			break;
-		case ZEND_JMPZNZ:
-			new_opline->extended_value = ZEND_OPLINE_NUM_TO_OFFSET(op_array, new_opline, ZEND_OFFSET_TO_OPLINE_NUM(op_array, opline, opline->extended_value));
-			ZEND_FALLTHROUGH;
 		case ZEND_JMPZ:
 		case ZEND_JMPNZ:
 		case ZEND_JMPZ_EX:
@@ -750,9 +752,6 @@ void zend_optimizer_shift_jump(zend_op_array *op_array, zend_op *opline, uint32_
 		case ZEND_FAST_CALL:
 			ZEND_SET_OP_JMP_ADDR(opline, opline->op1, ZEND_OP1_JMP_ADDR(opline) - shiftlist[ZEND_OP1_JMP_ADDR(opline) - op_array->opcodes]);
 			break;
-		case ZEND_JMPZNZ:
-			opline->extended_value = ZEND_OPLINE_NUM_TO_OFFSET(op_array, opline, ZEND_OFFSET_TO_OPLINE_NUM(op_array, opline, opline->extended_value) - shiftlist[ZEND_OFFSET_TO_OPLINE_NUM(op_array, opline, opline->extended_value)]);
-			ZEND_FALLTHROUGH;
 		case ZEND_JMPZ:
 		case ZEND_JMPNZ:
 		case ZEND_JMPZ_EX:
@@ -1020,7 +1019,8 @@ static void zend_optimize(zend_op_array      *op_array,
 	/* pass 9:
 	 * - Optimize temp variables usage
 	 */
-	if (ZEND_OPTIMIZER_PASS_9 & ctx->optimization_level) {
+	if ((ZEND_OPTIMIZER_PASS_9 & ctx->optimization_level) &&
+	    !(ZEND_OPTIMIZER_PASS_7 & ctx->optimization_level)) {
 		zend_optimize_temporary_variables(op_array, ctx);
 		if (ctx->debug_level & ZEND_DUMP_AFTER_PASS_9) {
 			zend_dump_op_array(op_array, 0, "after pass 9", NULL);
@@ -1139,9 +1139,6 @@ static void zend_redo_pass_two(zend_op_array *op_array)
 			case ZEND_FAST_CALL:
 				opline->op1.jmp_addr = &op_array->opcodes[opline->op1.jmp_addr - old_opcodes];
 				break;
-			case ZEND_JMPZNZ:
-				/* relative extended_value don't have to be changed */
-				/* break omitted intentionally */
 			case ZEND_JMPZ:
 			case ZEND_JMPNZ:
 			case ZEND_JMPZ_EX:
@@ -1262,9 +1259,6 @@ static void zend_redo_pass_two_ex(zend_op_array *op_array, zend_ssa *ssa)
 			case ZEND_FAST_CALL:
 				opline->op1.jmp_addr = &op_array->opcodes[opline->op1.jmp_addr - old_opcodes];
 				break;
-			case ZEND_JMPZNZ:
-				/* relative extended_value don't have to be changed */
-				/* break omitted intentionally */
 			case ZEND_JMPZ:
 			case ZEND_JMPNZ:
 			case ZEND_JMPZ_EX:
@@ -1526,6 +1520,15 @@ ZEND_API void zend_optimize_script(zend_script *script, zend_long optimization_l
 		if (debug_level & ZEND_DUMP_AFTER_PASS_7) {
 			for (i = 0; i < call_graph.op_arrays_count; i++) {
 				zend_dump_op_array(call_graph.op_arrays[i], 0, "after pass 7", NULL);
+			}
+		}
+
+		if (ZEND_OPTIMIZER_PASS_9 & optimization_level) {
+			for (i = 0; i < call_graph.op_arrays_count; i++) {
+				zend_optimize_temporary_variables(call_graph.op_arrays[i], &ctx);
+				if (debug_level & ZEND_DUMP_AFTER_PASS_9) {
+					zend_dump_op_array(call_graph.op_arrays[i], 0, "after pass 9", NULL);
+				}
 			}
 		}
 

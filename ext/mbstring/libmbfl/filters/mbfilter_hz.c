@@ -130,6 +130,7 @@ int mbfl_filt_conv_hz_wchar(int c, mbfl_convert_filter *filter)
 			filter->status = 0x10;
 		} else if (c == '~' && filter->status == 2) {
 			CK((*filter->output_function)('~', filter->data));
+			filter->status -= 2;
 		} else if (c == '\n') {
 			/* "~\n" is a line continuation; no output is needed, nor should we shift modes */
 			filter->status -= 2;
@@ -372,7 +373,7 @@ static void mb_wchar_to_hz(uint32_t *in, size_t len, mb_convert_buf *buf, bool e
 		} else if (s < 0x80) {
 			/* ASCII */
 			if (buf->state != ASCII) {
-				MB_CONVERT_BUF_ENSURE(buf, out, limit, len + 2);
+				MB_CONVERT_BUF_ENSURE(buf, out, limit, len + 3);
 				out = mb_convert_buf_add2(out, '~', '}');
 				buf->state = ASCII;
 			}
@@ -385,11 +386,12 @@ static void mb_wchar_to_hz(uint32_t *in, size_t len, mb_convert_buf *buf, bool e
 		} else {
 			/* GB 2312-80 */
 			if (buf->state != GB2312) {
-				MB_CONVERT_BUF_ENSURE(buf, out, limit, len + 2);
+				MB_CONVERT_BUF_ENSURE(buf, out, limit, len + 4);
 				out = mb_convert_buf_add2(out, '~', '{');
 				buf->state = GB2312;
+			} else {
+				MB_CONVERT_BUF_ENSURE(buf, out, limit, len + 2);
 			}
-			MB_CONVERT_BUF_ENSURE(buf, out, limit, len + 2);
 			out = mb_convert_buf_add2(out, (s >> 8) & 0x7F, s & 0x7F);
 		}
 	}

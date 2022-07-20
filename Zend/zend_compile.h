@@ -240,7 +240,7 @@ typedef struct _zend_oparray_context {
 /* or IS_CONSTANT_VISITED_MARK                            |     |     |     */
 #define ZEND_CLASS_CONST_IS_CASE         (1 << 6)  /*     |     |     |  X  */
 /*                                                        |     |     |     */
-/* Class Flags (unused: 16,21,30,31)                      |     |     |     */
+/* Class Flags (unused: 21,30,31)                         |     |     |     */
 /* ===========                                            |     |     |     */
 /*                                                        |     |     |     */
 /* Special class types                                    |     |     |     */
@@ -272,6 +272,9 @@ typedef struct _zend_oparray_context {
 /* Objects of this class may have dynamic properties      |     |     |     */
 /* without triggering a deprecation warning               |     |     |     */
 #define ZEND_ACC_ALLOW_DYNAMIC_PROPERTIES (1 << 15) /* X  |     |     |     */
+/*                                                        |     |     |     */
+/* Readonly class                                         |     |     |     */
+#define ZEND_ACC_READONLY_CLASS          (1 << 16) /*  X  |     |     |     */
 /*                                                        |     |     |     */
 /* Parent class is resolved (CE).                         |     |     |     */
 #define ZEND_ACC_RESOLVED_PARENT         (1 << 17) /*  X  |     |     |     */
@@ -369,9 +372,13 @@ typedef struct _zend_oparray_context {
 /* call through internal function handler. e.g. Closure::invoke() */
 #define ZEND_ACC_CALL_VIA_HANDLER     ZEND_ACC_CALL_VIA_TRAMPOLINE
 
+#define ZEND_SHORT_CIRCUITING_CHAIN_MASK 0x3
 #define ZEND_SHORT_CIRCUITING_CHAIN_EXPR 0
 #define ZEND_SHORT_CIRCUITING_CHAIN_ISSET 1
 #define ZEND_SHORT_CIRCUITING_CHAIN_EMPTY 2
+
+// Must not clash with ZEND_SHORT_CIRCUITING_CHAIN_MASK
+#define ZEND_JMP_NULL_BP_VAR_IS 4
 
 char *zend_visibility_string(uint32_t fn_flags);
 
@@ -1076,6 +1083,10 @@ static zend_always_inline bool zend_check_arg_send_type(const zend_function *zf,
 
 /* Attribute for ternary inside parentheses */
 #define ZEND_PARENTHESIZED_CONDITIONAL 1
+
+/* Attributes for ${} encaps var in strings */
+#define ZEND_ENCAPS_VAR_DOLLAR_CURLY (1<<0)
+#define ZEND_ENCAPS_VAR_DOLLAR_CURLY_VAR_VAR (1<<1)
 
 /* For "use" AST nodes and the seen symbol table */
 #define ZEND_SYMBOL_CLASS    (1<<0)
