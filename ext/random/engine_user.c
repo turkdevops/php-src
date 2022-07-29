@@ -10,7 +10,7 @@
    | obtain it through the world-wide-web, please send a note to          |
    | license@php.net so we can mail you a copy immediately.               |
    +----------------------------------------------------------------------+
-   | Author: Go Kudo <g-kudo@colopl.co.jp>                                |
+   | Author: Go Kudo <zeriyoshi@php.net>                                  |
    +----------------------------------------------------------------------+
 */
 
@@ -31,7 +31,6 @@ static uint64_t generate(php_random_status *status)
 	zend_call_known_instance_method_with_0_params(s->generate_method, s->object, &retval);
 
 	if (EG(exception)) {
-		status->last_unsafe = true;
 		return 0;
 	}
 
@@ -50,7 +49,7 @@ static uint64_t generate(php_random_status *status)
 			result += ((uint64_t) (unsigned char) Z_STRVAL(retval)[i]) << (8 * i);
 		}
 	} else {
-		status->last_unsafe = true;
+		zend_throw_error(NULL, "A random engine must return a non-empty string");
 		return 0;
 	}
 

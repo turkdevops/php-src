@@ -7349,6 +7349,19 @@ static void zend_compile_func_decl(znode *result, zend_ast *ast, bool toplevel) 
 	} else if (uses_ast) {
 		zend_compile_closure_uses(uses_ast);
 	}
+
+	if (ast->kind == ZEND_AST_ARROW_FUNC) {
+		bool needs_return = true;
+		if (op_array->fn_flags & ZEND_ACC_HAS_RETURN_TYPE) {
+			zend_arg_info *return_info = CG(active_op_array)->arg_info - 1;
+			needs_return = !ZEND_TYPE_CONTAINS_CODE(return_info->type, IS_NEVER);
+		}
+		if (needs_return) {
+			stmt_ast = zend_ast_create(ZEND_AST_RETURN, stmt_ast);
+			decl->child[2] = stmt_ast;
+		}
+	}
+
 	zend_compile_stmt(stmt_ast);
 
 	if (is_method) {
@@ -10615,6 +10628,10 @@ static void zend_eval_const_expr(zend_ast **ast_ptr) /* {{{ */
 			return;
 		case ZEND_AST_CONST_ENUM_INIT:
 			zend_eval_const_expr(&ast->child[2]);
+			return;
+		case ZEND_AST_PROP:
+			zend_eval_const_expr(&ast->child[0]);
+			zend_eval_const_expr(&ast->child[1]);
 			return;
 		default:
 			return;

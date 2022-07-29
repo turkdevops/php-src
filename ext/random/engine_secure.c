@@ -11,7 +11,7 @@
    | license@php.net so we can mail you a copy immediately.               |
    +----------------------------------------------------------------------+
    | Authors: Sammy Kaye Powers <me@sammyk.me>                            |
-   |          Go Kudo <g-kudo@colopl.co.jp>                               |
+   |          Go Kudo <zeriyoshi@php.net>                                 |
    +----------------------------------------------------------------------+
 */
 
@@ -29,20 +29,16 @@ static uint64_t generate(php_random_status *status)
 {
 	zend_ulong r = 0;
 
-	if (php_random_bytes_silent(&r, sizeof(zend_ulong)) == FAILURE) {
-		status->last_unsafe = true;
-	}
+	php_random_bytes_throw(&r, sizeof(zend_ulong));
 
 	return r;
 }
 
 static zend_long range(php_random_status *status, zend_long min, zend_long max)
 {
-	zend_long result;
+	zend_long result = 0;
 
-	if (php_random_int_silent(min, max, &result) == FAILURE) {
-		status->last_unsafe = true;
-	}
+	php_random_int_throw(min, max, &result);
 
 	return result;
 }

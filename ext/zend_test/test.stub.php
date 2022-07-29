@@ -6,6 +6,12 @@
  */
 namespace {
 
+    /**
+     * @var int
+     * @deprecated
+     */
+    const ZEND_TEST_DEPRECATED = 42;
+
     require "Zend/zend_attributes.stub.php";
 
     interface _ZendTestInterface
@@ -21,6 +27,7 @@ namespace {
         public int $intProp = 123;
         public ?stdClass $classProp = null;
         public stdClass|Iterator|null $classUnionProp = null;
+        public Traversable&Countable $classIntersectionProp;
         public readonly int $readonlyProp;
 
         public static function is_object(): int {}
@@ -141,6 +148,12 @@ namespace ZendTestNS {
     class Foo {
         /** @tentative-return-type */
         public function method(): int {}
+    }
+
+    class UnlikelyCompileError {
+        /* This method signature would create a compile error due to the string
+         * "ZendTestNS\UnlikelyCompileError" in the generated macro call */
+        public function method(): ?UnlikelyCompileError {}
     }
 
 }

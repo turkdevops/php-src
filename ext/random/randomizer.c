@@ -10,7 +10,7 @@
    | obtain it through the world-wide-web, please send a note to          |
    | license@php.net so we can mail you a copy immediately.               |
    +----------------------------------------------------------------------+
-   | Author: Go Kudo <g-kudo@colopl.co.jp>                                |
+   | Author: Go Kudo <zeriyoshi@php.net>                                  |
    +----------------------------------------------------------------------+
 */
 
@@ -70,6 +70,11 @@ PHP_METHOD(Random_Randomizer, __construct)
 		Z_PARAM_OBJ_OF_CLASS_OR_NULL(engine_object, random_ce_Random_Engine);
 	ZEND_PARSE_PARAMETERS_END();
 
+	if (randomizer->algo) {
+		zend_throw_exception_ex(spl_ce_BadMethodCallException, 0, "Cannot call constructor twice");
+		RETURN_THROWS();
+	}
+
 	/* Create default RNG instance */
 	if (!engine_object) {
 		engine_object = random_ce_Random_Engine_Secure->create_object(random_ce_Random_Engine_Secure);
@@ -100,7 +105,7 @@ PHP_METHOD(Random_Randomizer, getInt)
 			zend_throw_exception(spl_ce_RuntimeException, "Generated value exceeds size of int", 0);
 			RETURN_THROWS();
 		}
-		if (randomizer->status->last_unsafe) {
+		if (EG(exception)) {
 			zend_throw_exception(spl_ce_RuntimeException, "Random number generation failed", 0);
 			RETURN_THROWS();
 		}
@@ -118,7 +123,7 @@ PHP_METHOD(Random_Randomizer, getInt)
 	}
 
 	result = randomizer->algo->range(randomizer->status, min, max);
-	if (randomizer->status->last_unsafe) {
+	if (EG(exception)) {
 		zend_throw_exception(spl_ce_RuntimeException, "Random number generation failed", 0);
 		RETURN_THROWS();
 	}
@@ -150,7 +155,7 @@ PHP_METHOD(Random_Randomizer, getBytes)
 
 	while (total_size < required_size) {
 		result = randomizer->algo->generate(randomizer->status);
-		if (randomizer->status->last_unsafe) {
+		if (EG(exception)) {
 			zend_string_free(retval);
 			zend_throw_exception(spl_ce_RuntimeException, "Random number generation failed", 0);
 			RETURN_THROWS();

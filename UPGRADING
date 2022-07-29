@@ -45,7 +45,9 @@ PHP 8.2 UPGRADE NOTES
     stripos, strripos, lcfirst, ucfirst, ucwords, str_ireplace,
     array_change_key_case and sorting with SORT_FLAG_CASE use ASCII case
     conversion.
-  . str_split no longer returns an empty array on empty string.
+  . str_split() returns an empty array for an empty string now. Previously it
+    returned an array with a single empty string entry. mb_str_split() is not
+    affected by this change since it was already behaving like that.
 
 - SPL:
   . The following methods now enforce their signature:
@@ -59,6 +61,9 @@ PHP 8.2 UPGRADE NOTES
     previously it was bool
   . SplFileObject::getChildren() now has a tentative return type of null,
     previously it was ?RecursiveIterator
+  . GlogIterator returns empty array if all paths are restricted by
+    open_basedir. Previously the error was returned but that behavior was not
+    consistent and did not work correctly.
 
 ========================================
 2. New Features
@@ -87,6 +92,11 @@ PHP 8.2 UPGRADE NOTES
     HTTP method in curl_getinfo() return value.
   . Exposed multiple new constants from libcurl 7.62 to 7.80.
   . Added new function curl_upkeep() to perform any connection upkeep checks.
+
+- DBA:
+  . The LMDB Driver now accepts the DBA_LMDB_USE_SUB_DIR or DBA_LMDB_NO_SUB_DIR
+    flags to determine if it should create a sub directory or not when creating
+    a database file.
 
 - OCI8:
   . Added an oci8.prefetch_lob_size directive and oci_set_prefetch_lob()
@@ -183,7 +193,7 @@ PHP 8.2 UPGRADE NOTES
 
 - DBA
   . dba_open() and dba_popen() now have the following enforced function signature
-    dba_open(string $path, string $mode, ?string $handler = null, int $permission = 0o644, int $map_size = 0)
+    dba_open(string $path, string $mode, ?string $handler = null, int $permission = 0o644, int $map_size = 0, ?int $flags = null)
   . dba_fetch()'s optional skip argument is now at the end in line with
     PHP userland semantics its signature now is:
     dba_fetch(string|array $key, $dba, int $skip = 0): string|false

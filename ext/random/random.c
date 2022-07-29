@@ -11,7 +11,7 @@
    | license@php.net so we can mail you a copy immediately.               |
    +----------------------------------------------------------------------+
    | Authors: Sammy Kaye Powers <me@sammyk.me>                            |
-   |          Go Kudo <g-kudo@colopl.co.jp>                               |
+   |          Go Kudo <zeriyoshi@php.net>                                 |
    +----------------------------------------------------------------------+
 */
 
@@ -82,6 +82,8 @@ static zend_object_handlers random_engine_xoshiro256starstar_object_handlers;
 static zend_object_handlers random_engine_secure_object_handlers;
 static zend_object_handlers random_randomizer_object_handlers;
 
+#define RANDOM_RANGE_ATTEMPTS (50)
+
 static inline uint32_t rand_range32(const php_random_algo *algo, php_random_status *status, uint32_t umax)
 {
 	uint32_t result, limit, r;
@@ -92,9 +94,9 @@ static inline uint32_t rand_range32(const php_random_algo *algo, php_random_stat
 	total_size = 0;
 	do {
 		r = algo->generate(status);
-		result = (result << (8 * status->last_generated_size)) | r;
+		result = result | (r << (total_size * 8));
 		total_size += status->last_generated_size;
-		if (status->last_unsafe) {
+		if (EG(exception)) {
 			return 0;
 		}
 	} while (total_size < sizeof(uint32_t));
@@ -118,8 +120,8 @@ static inline uint32_t rand_range32(const php_random_algo *algo, php_random_stat
 	/* Discard numbers over the limit to avoid modulo bias */
 	while (UNEXPECTED(result > limit)) {
 		/* If the requirements cannot be met in a cycles, return fail */
-		if (++count > 50) {
-			status->last_unsafe = true;
+		if (++count > RANDOM_RANGE_ATTEMPTS) {
+			zend_throw_error(NULL, "Failed to generate an acceptable random number in %d attempts", RANDOM_RANGE_ATTEMPTS);
 			return 0;
 		}
 
@@ -127,9 +129,9 @@ static inline uint32_t rand_range32(const php_random_algo *algo, php_random_stat
 		total_size = 0;
 		do {
 			r = algo->generate(status);
-			result = (result << (8 * status->last_generated_size)) | r;
+			result = result | (r << (total_size * 8));
 			total_size += status->last_generated_size;
-			if (status->last_unsafe) {
+			if (EG(exception)) {
 				return 0;
 			}
 		} while (total_size < sizeof(uint32_t));
@@ -148,9 +150,9 @@ static inline uint64_t rand_range64(const php_random_algo *algo, php_random_stat
 	total_size = 0;
 	do {
 		r = algo->generate(status);
-		result = (result << (8 * status->last_generated_size)) | r;
+		result = result | (r << (total_size * 8));
 		total_size += status->last_generated_size;
-		if (status->last_unsafe) {
+		if (EG(exception)) {
 			return 0;
 		}
 	} while (total_size < sizeof(uint64_t));
@@ -174,8 +176,8 @@ static inline uint64_t rand_range64(const php_random_algo *algo, php_random_stat
 	/* Discard numbers over the limit to avoid modulo bias */
 	while (UNEXPECTED(result > limit)) {
 		/* If the requirements cannot be met in a cycles, return fail */
-		if (++count > 50) {
-			status->last_unsafe = true;
+		if (++count > RANDOM_RANGE_ATTEMPTS) {
+			zend_throw_error(NULL, "Failed to generate an acceptable random number in %d attempts", RANDOM_RANGE_ATTEMPTS);
 			return 0;
 		}
 
@@ -183,9 +185,9 @@ static inline uint64_t rand_range64(const php_random_algo *algo, php_random_stat
 		total_size = 0;
 		do {
 			r = algo->generate(status);
-			result = (result << (8 * status->last_generated_size)) | r;
+			result = result | (r << (total_size * 8));
 			total_size += status->last_generated_size;
-			if (status->last_unsafe) {
+			if (EG(exception)) {
 				return 0;
 			}
 		} while (total_size < sizeof(uint64_t));
@@ -241,7 +243,6 @@ PHPAPI php_random_status *php_random_status_alloc(const php_random_algo *algo, c
 	php_random_status *status = pecalloc(1, sizeof(php_random_status), persistent);
 
 	status->last_generated_size = algo->generate_size;
-	status->last_unsafe = false;
 	status->state = algo->state_size > 0 ? pecalloc(1, algo->state_size, persistent) : NULL;
 
 	return status;
@@ -250,7 +251,6 @@ PHPAPI php_random_status *php_random_status_alloc(const php_random_algo *algo, c
 PHPAPI php_random_status *php_random_status_copy(const php_random_algo *algo, php_random_status *old_status, php_random_status *new_status)
 {
 	new_status->last_generated_size = old_status->last_generated_size;
-	new_status->last_unsafe = old_status->last_unsafe;
 	new_status->state = memcpy(new_status->state, old_status->state, algo->state_size);
 
 	return new_status;
@@ -307,13 +307,13 @@ PHPAPI zend_object *php_random_engine_common_clone_object(zend_object *object)
 /* {{{ php_random_range */
 PHPAPI zend_long php_random_range(const php_random_algo *algo, php_random_status *status, zend_long min, zend_long max)
 {
-	zend_ulong umax = max - min;
+	zend_ulong umax = (zend_ulong) max - (zend_ulong) min;
 
-	if (PHP_RANDOM_ALGO_IS_DYNAMIC(algo) || algo->generate_size > sizeof(uint32_t) || umax > UINT32_MAX) {
-		return (zend_long) rand_range64(algo, status, umax) + min;
+	if (algo->generate_size == 0 || algo->generate_size > sizeof(uint32_t) || umax > UINT32_MAX) {
+		return (zend_long) (rand_range64(algo, status, umax) + min);
 	}
 
-	return (zend_long) rand_range32(algo, status, umax) + min;
+	return (zend_long) (rand_range32(algo, status, umax) + min);
 }
 /* }}} */
 
@@ -470,7 +470,7 @@ PHPAPI int php_random_bytes(void *bytes, size_t size, bool should_throw)
 	/* Defer to CryptGenRandom on Windows */
 	if (php_win32_get_random_bytes(bytes, size) == FAILURE) {
 		if (should_throw) {
-			zend_throw_exception(zend_ce_exception, "Could not gather sufficient random data", 0);
+			zend_throw_exception(zend_ce_exception, "Failed to retrieve randomness from the operating system (BCryptGenRandom)", 0);
 		}
 		return FAILURE;
 	}
@@ -483,7 +483,7 @@ PHPAPI int php_random_bytes(void *bytes, size_t size, bool should_throw)
 	 */
 	if (CCRandomGenerateBytes(bytes, size) != kCCSuccess) {
 		if (should_throw) {
-			zend_throw_exception(zend_ce_exception, "Error generating bytes", 0);
+			zend_throw_exception(zend_ce_exception, "Failed to retrieve randomness from the operating system (CCRandomGenerateBytes)", 0);
 		}
 		return FAILURE;
 	}
@@ -496,6 +496,8 @@ PHPAPI int php_random_bytes(void *bytes, size_t size, bool should_throw)
 	/* Linux getrandom(2) syscall or FreeBSD/DragonFlyBSD getrandom(2) function*/
 	/* Keep reading until we get enough entropy */
 	while (read_bytes < size) {
+		errno = 0;
+
 		/* Below, (bytes + read_bytes)  is pointer arithmetic.
 
 		   bytes   read_bytes  size
@@ -522,7 +524,7 @@ PHPAPI int php_random_bytes(void *bytes, size_t size, bool should_throw)
 				/* Try again */
 				continue;
 			} else {
-			    /* If the syscall fails, fall back to reading from /dev/urandom */
+				/* If the syscall fails, fall back to reading from /dev/urandom */
 				break;
 			}
 		}
@@ -539,15 +541,22 @@ PHPAPI int php_random_bytes(void *bytes, size_t size, bool should_throw)
 		struct stat st;
 
 		if (fd < 0) {
+			errno = 0;
 # if HAVE_DEV_URANDOM
 			fd = open("/dev/urandom", O_RDONLY);
 # endif
 			if (fd < 0) {
 				if (should_throw) {
-					zend_throw_exception(zend_ce_exception, "Cannot open source device", 0);
+					if (errno != 0) {
+						zend_throw_exception_ex(zend_ce_exception, 0, "Cannot open /dev/urandom: %s", strerror(errno));
+					} else {
+						zend_throw_exception_ex(zend_ce_exception, 0, "Cannot open /dev/urandom");
+					}
 				}
 				return FAILURE;
 			}
+
+			errno = 0;
 			/* Does the file exist and is it a character device? */
 			if (fstat(fd, &st) != 0 ||
 # ifdef S_ISNAM
@@ -558,7 +567,11 @@ PHPAPI int php_random_bytes(void *bytes, size_t size, bool should_throw)
 			) {
 				close(fd);
 				if (should_throw) {
-					zend_throw_exception(zend_ce_exception, "Error reading from source device", 0);
+					if (errno != 0) {
+						zend_throw_exception_ex(zend_ce_exception, 0, "Error reading from /dev/urandom: %s", strerror(errno));
+					} else {
+						zend_throw_exception_ex(zend_ce_exception, 0, "Error reading from /dev/urandom");
+					}
 				}
 				return FAILURE;
 			}
@@ -566,6 +579,7 @@ PHPAPI int php_random_bytes(void *bytes, size_t size, bool should_throw)
 		}
 
 		for (read_bytes = 0; read_bytes < size; read_bytes += (size_t) n) {
+			errno = 0;
 			n = read(fd, bytes + read_bytes, size - read_bytes);
 			if (n <= 0) {
 				break;
@@ -574,7 +588,11 @@ PHPAPI int php_random_bytes(void *bytes, size_t size, bool should_throw)
 
 		if (read_bytes < size) {
 			if (should_throw) {
-				zend_throw_exception(zend_ce_exception, "Could not gather sufficient random data", 0);
+				if (errno != 0) {
+					zend_throw_exception_ex(zend_ce_exception, 0, "Could not gather sufficient random data: %s", strerror(errno));
+				} else {
+					zend_throw_exception_ex(zend_ce_exception, 0, "Could not gather sufficient random data");
+				}
 			}
 			return FAILURE;
 		}
@@ -776,6 +794,35 @@ PHP_FUNCTION(random_int)
 }
 /* }}} */
 
+/* {{{ PHP_GINIT_FUNCTION */
+static PHP_GINIT_FUNCTION(random)
+{
+	random_globals->random_fd = -1;
+
+	random_globals->combined_lcg = php_random_status_alloc(&php_random_algo_combinedlcg, true);
+	random_globals->combined_lcg_seeded = false;
+
+	random_globals->mt19937 = php_random_status_alloc(&php_random_algo_mt19937, true);
+	random_globals->mt19937_seeded = false;
+}
+/* }}} */
+
+/* {{{ PHP_GSHUTDOWN_FUNCTION */
+static PHP_GSHUTDOWN_FUNCTION(random)
+{
+	if (random_globals->random_fd > 0) {
+		close(random_globals->random_fd);
+		random_globals->random_fd = -1;
+	}
+
+	php_random_status_free(random_globals->combined_lcg, true);
+	random_globals->combined_lcg = NULL;
+
+	php_random_status_free(random_globals->mt19937, true);
+	random_globals->mt19937 = NULL;
+}
+/* }}} */
+
 /* {{{ PHP_MINIT_FUNCTION */
 PHP_MINIT_FUNCTION(random)
 {
@@ -825,34 +872,7 @@ PHP_MINIT_FUNCTION(random)
 	random_randomizer_object_handlers.free_obj = randomizer_free_obj;
 	random_randomizer_object_handlers.clone_obj = NULL;
 
-	REGISTER_LONG_CONSTANT("MT_RAND_MT19937", MT_RAND_MT19937, CONST_CS | CONST_PERSISTENT);
-	REGISTER_LONG_CONSTANT("MT_RAND_PHP",     MT_RAND_PHP, CONST_CS | CONST_PERSISTENT);
-
-	RANDOM_G(random_fd) = -1;
-
-	RANDOM_G(combined_lcg) = php_random_status_alloc(&php_random_algo_combinedlcg, true);
-	RANDOM_G(combined_lcg_seeded) = false;
-
-	RANDOM_G(mt19937) = php_random_status_alloc(&php_random_algo_mt19937, true);
-	RANDOM_G(mt19937_seeded) = false;
-
-	return SUCCESS;
-}
-/* }}} */
-
-/* {{{ PHP_MSHUTDOWN_FUNCTION */
-PHP_MSHUTDOWN_FUNCTION(random)
-{
-	if (RANDOM_G(random_fd) > 0) {
-		close(RANDOM_G(random_fd));
-		RANDOM_G(random_fd) = -1;
-	}
-
-	php_random_status_free(RANDOM_G(combined_lcg), true);
-	RANDOM_G(combined_lcg) = NULL;
-
-	php_random_status_free(RANDOM_G(mt19937), true);
-	RANDOM_G(mt19937) = NULL;
+	register_random_symbols(module_number);
 
 	return SUCCESS;
 }
@@ -861,10 +881,6 @@ PHP_MSHUTDOWN_FUNCTION(random)
 /* {{{ PHP_RINIT_FUNCTION */
 PHP_RINIT_FUNCTION(random)
 {
-#if defined(ZTS) && defined(COMPILE_DL_RANDOM)
-	ZEND_TSRMLS_CACHE_UPDATE();
-#endif
-
 	RANDOM_G(combined_lcg_seeded) = false;
 	RANDOM_G(mt19937_seeded) = false;
 
@@ -878,22 +894,15 @@ zend_module_entry random_module_entry = {
 	"random",					/* Extension name */
 	ext_functions,				/* zend_function_entry */
 	PHP_MINIT(random),			/* PHP_MINIT - Module initialization */
-	PHP_MSHUTDOWN(random),		/* PHP_MSHUTDOWN - Module shutdown */
+	NULL,						/* PHP_MSHUTDOWN - Module shutdown */
 	PHP_RINIT(random),			/* PHP_RINIT - Request initialization */
 	NULL,						/* PHP_RSHUTDOWN - Request shutdown */
 	NULL,						/* PHP_MINFO - Module info */
 	PHP_VERSION,				/* Version */
 	PHP_MODULE_GLOBALS(random),	/* ZTS Module globals */
-	NULL,						/* PHP_GINIT - Global initialization */
-	NULL,						/* PHP_GSHUTDOWN - Global shutdown */
+	PHP_GINIT(random),			/* PHP_GINIT - Global initialization */
+	PHP_GSHUTDOWN(random),		/* PHP_GSHUTDOWN - Global shutdown */
 	NULL,						/* Post deactivate */
 	STANDARD_MODULE_PROPERTIES_EX
 };
 /* }}} */
-
-#ifdef COMPILE_DL_RANDOM
-# ifdef ZTS
-ZEND_TSRMLS_CACHE_DEFINE()
-# endif
-ZEND_GET_MODULE(random)
-#endif

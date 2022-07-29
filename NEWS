@@ -2,6 +2,54 @@ PHP                                                                        NEWS
 |||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
 ?? ??? ????, PHP 8.2.0beta2
 
+- Date:
+  . Fixed bug GH-8730 (DateTime::diff miscalculation is same time zone of
+    different type). (Derick)
+  . Fixed bug GH-8964 (DateTime object comparison after applying delta less
+    than 1 second). (Derick)
+  . Fixed bug GH-9106: (DateInterval 1.5s added to DateTimeInterface is rounded
+    down since PHP 8.1.0). (Derick)
+  . Fixed bug #75035 (Datetime fails to unserialize "extreme" dates).
+    (Derick)
+  . Fixed bug #80483 (DateTime Object with 5-digit year can't unserialized).
+    (Derick)
+  . Fixed bug #81263 (Wrong result from DateTimeImmutable::diff). (Derick)
+
+- DBA:
+  . Fixed LMDB driver memory leak on DB creation failure (Girgias)
+  . Fixed GH-8856 (dba: lmdb: allow to override the MDB_NOSUBDIR flag). (Girgias)
+
+- FFI:
+  . Fixed bug GH-9090 (Support assigning function pointers in FFI). (Adam
+    Saponara)
+
+- PCNTL:
+  . Fixed pcntl_(get|set)priority error handling for MacOS. (Juan Morales)
+
+- Random:
+  . Fixed bug GH-9067 (random extension is not thread safe). (cmb)
+  . Fixed bug GH-9055 (segmentation fault if user engine throws). (timwolla)
+  . Fixed bug GH-9066 (signed integer overflow). (zeriyoshi)
+  . Fixed bug GH-9083 (undefined behavior during shifting). (timwolla)
+  . Fixed bug GH-9088, GH-9056 (incorrect expansion of bytes when
+    generating uniform integers within a given range). (timwolla)
+  . Fixed bug GH-9089 (Fix memory leak on Randomizer::__construct()
+    call twice) (zeriyoshi)
+  . Change Mt19937 to throw a ValueError instead of InvalidArgumentException
+    for invalid $mode. (timwolla)
+
+- Sockets:
+  . Added SOL_FILTER socket option for Solaris. (David Carlier)
+
+- SPL:
+  . Fixed bug #69181 (READ_CSV|DROP_NEW_LINE drops newlines within fields).
+    (cmb)
+  . Fixed bug #65069 (GlobIterator incorrect handling of open_basedir check).
+    (Jakub Zelenka)
+
+- Core:
+  . Fixed bug GH-7900 (Arrow function with never return type compile-time
+    errors). (ilutov)
 
 21 Jul 2022, PHP 8.2.0beta1
 
@@ -57,7 +105,8 @@ PHP                                                                        NEWS
     iterable. (timwolla)
 
 - Standard:
-  . Fixed empty array returned by str_split on empty input. (Michael Vorisek)
+  . Implemented FR GH-8924 (str_split should return empty array for empty
+    string). (Michael Vorisek)
   . Added ini_parse_quantity function to convert ini quantities shorthand
     notation to int. (Dennis Snell)
   . Enable arc4random_buf for Linux glibc 2.36 and onwards

@@ -14,7 +14,7 @@
    |          Zeev Suraski <zeev@php.net>                                 |
    |          Pedro Melo <melo@ip.pt>                                     |
    |          Sterling Hughes <sterling@php.net>                          |
-   |          Go Kudo <g-kudo@colopl.co.jp>                               |
+   |          Go Kudo <zeriyoshi@php.net>                                 |
    |                                                                      |
    | Based on code from: Richard J. Wagner <rjwagner@writeme.com>         |
    |                     Makoto Matsumoto <matumoto@math.keio.ac.jp>      |
@@ -273,7 +273,7 @@ PHP_METHOD(Random_Engine_Mt19937, __construct)
 			state->mode = MT_RAND_PHP;
 			break;
 		default:
-			zend_argument_error(spl_ce_InvalidArgumentException, 2, "mode must be MT_RAND_MT19937 or MT_RAND_PHP");
+			zend_argument_value_error(2, "mode must be MT_RAND_MT19937 or MT_RAND_PHP");
 			RETURN_THROWS();
 	}
 
@@ -301,7 +301,7 @@ PHP_METHOD(Random_Engine_Mt19937, generate)
 
 	generated = engine->algo->generate(engine->status);
 	size = engine->status->last_generated_size;
-	if (engine->status->last_unsafe) {
+	if (EG(exception)) {
 		zend_throw_exception(spl_ce_RuntimeException, "Random number generation failed", 0);
 		RETURN_THROWS();
 	}

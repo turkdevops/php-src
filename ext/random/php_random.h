@@ -16,7 +16,7 @@
    |          Pedro Melo <melo@ip.pt>                                     |
    |          Sterling Hughes <sterling@php.net>                          |
    |          Sammy Kaye Powers <me@sammyk.me>                            |
-   |          Go Kudo <g-kudo@colopl.co.jp>                               |
+   |          Go Kudo <zeriyoshi@php.net>                                 |
    |                                                                      |
    | Based on code from: Richard J. Wagner <rjwagner@writeme.com>         |
    |                     Makoto Matsumoto <matumoto@math.keio.ac.jp>      |
@@ -201,7 +201,6 @@ PHPAPI int php_random_int(zend_long min, zend_long max, zend_long *result, bool 
 
 typedef struct _php_random_status_ {
 	size_t last_generated_size;
-	bool last_unsafe;
 	void *state;
 } php_random_status;
 
@@ -244,8 +243,6 @@ extern PHPAPI const php_random_algo php_random_algo_pcgoneseq128xslrr64;
 extern PHPAPI const php_random_algo php_random_algo_xoshiro256starstar;
 extern PHPAPI const php_random_algo php_random_algo_secure;
 extern PHPAPI const php_random_algo php_random_algo_user;
-
-# define PHP_RANDOM_ALGO_IS_DYNAMIC(algo)	((algo)->generate_size == 0)
 
 typedef struct _php_random_engine {
 	const php_random_algo *algo;
