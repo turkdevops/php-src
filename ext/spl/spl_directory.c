@@ -2020,47 +2020,12 @@ static zend_result spl_filesystem_file_read_line_ex(zval * this_ptr, spl_filesys
 	}
 } /* }}} */
 
-static bool spl_filesystem_file_is_empty_line(spl_filesystem_object *intern) /* {{{ */
-{
-	if (intern->u.file.current_line) {
-		return intern->u.file.current_line_len == 0;
-	} else if (!Z_ISUNDEF(intern->u.file.current_zval)) {
-		ZEND_ASSERT(Z_TYPE(intern->u.file.current_zval) == IS_ARRAY);
-		/* TODO Figure out when this branch can happen... */
-		if (SPL_HAS_FLAG(intern->flags, SPL_FILE_OBJECT_READ_CSV)
-				&& zend_hash_num_elements(Z_ARRVAL(intern->u.file.current_zval)) == 1) {
-			ZEND_ASSERT(false && "Can this happen?");
-			uint32_t idx = 0;
-			zval *first;
-
-			if (HT_IS_PACKED(Z_ARRVAL(intern->u.file.current_zval))) {
-				while (Z_ISUNDEF(Z_ARRVAL(intern->u.file.current_zval)->arPacked[idx])) {
-					idx++;
-				}
-				first = &Z_ARRVAL(intern->u.file.current_zval)->arPacked[idx];
-				ZEND_ASSERT(Z_TYPE_P(first) == IS_STRING);
-			} else {
-				while (Z_ISUNDEF(Z_ARRVAL(intern->u.file.current_zval)->arData[idx].val)) {
-					idx++;
-				}
-				first = &Z_ARRVAL(intern->u.file.current_zval)->arData[idx].val;
-				ZEND_ASSERT(Z_TYPE_P(first) == IS_STRING);
-			}
-			return Z_STRLEN_P(first) == 0;
-		}
-		return zend_hash_num_elements(Z_ARRVAL(intern->u.file.current_zval)) == 0;
-	} else {
-		return 1;
-	}
-}
-/* }}} */
-
 /* Call to this function reads a line in a "silent" fashion and does not throw an exception */
 static zend_result spl_filesystem_file_read_line(zval * this_ptr, spl_filesystem_object *intern) /* {{{ */
 {
 	zend_result ret = spl_filesystem_file_read_line_ex(this_ptr, intern);
 
-	while (SPL_HAS_FLAG(intern->flags, SPL_FILE_OBJECT_SKIP_EMPTY) && ret == SUCCESS && spl_filesystem_file_is_empty_line(intern)) {
+	while (SPL_HAS_FLAG(intern->flags, SPL_FILE_OBJECT_SKIP_EMPTY) && ret == SUCCESS && is_line_empty(intern)) {
 		spl_filesystem_file_free_line(intern);
 		ret = spl_filesystem_file_read_line_ex(this_ptr, intern);
 	}
@@ -2807,19 +2772,6 @@ PHP_MINIT_FUNCTION(spl_directory)
 	spl_ce_FilesystemIterator->create_object = spl_filesystem_object_new;
 	spl_ce_FilesystemIterator->get_iterator = spl_filesystem_tree_get_iterator;
 
-	REGISTER_SPL_CLASS_CONST_LONG(FilesystemIterator, "CURRENT_MODE_MASK",   SPL_FILE_DIR_CURRENT_MODE_MASK);
-	REGISTER_SPL_CLASS_CONST_LONG(FilesystemIterator, "CURRENT_AS_PATHNAME", SPL_FILE_DIR_CURRENT_AS_PATHNAME);
-	REGISTER_SPL_CLASS_CONST_LONG(FilesystemIterator, "CURRENT_AS_FILEINFO", SPL_FILE_DIR_CURRENT_AS_FILEINFO);
-	REGISTER_SPL_CLASS_CONST_LONG(FilesystemIterator, "CURRENT_AS_SELF",     SPL_FILE_DIR_CURRENT_AS_SELF);
-	REGISTER_SPL_CLASS_CONST_LONG(FilesystemIterator, "KEY_MODE_MASK",       SPL_FILE_DIR_KEY_MODE_MASK);
-	REGISTER_SPL_CLASS_CONST_LONG(FilesystemIterator, "KEY_AS_PATHNAME",     SPL_FILE_DIR_KEY_AS_PATHNAME);
-	REGISTER_SPL_CLASS_CONST_LONG(FilesystemIterator, "FOLLOW_SYMLINKS",     SPL_FILE_DIR_FOLLOW_SYMLINKS);
-	REGISTER_SPL_CLASS_CONST_LONG(FilesystemIterator, "KEY_AS_FILENAME",     SPL_FILE_DIR_KEY_AS_FILENAME);
-	REGISTER_SPL_CLASS_CONST_LONG(FilesystemIterator, "NEW_CURRENT_AND_KEY", SPL_FILE_DIR_KEY_AS_FILENAME|SPL_FILE_DIR_CURRENT_AS_FILEINFO);
-	REGISTER_SPL_CLASS_CONST_LONG(FilesystemIterator, "OTHER_MODE_MASK",     SPL_FILE_DIR_OTHERS_MASK);
-	REGISTER_SPL_CLASS_CONST_LONG(FilesystemIterator, "SKIP_DOTS",           SPL_FILE_DIR_SKIPDOTS);
-	REGISTER_SPL_CLASS_CONST_LONG(FilesystemIterator, "UNIX_PATHS",          SPL_FILE_DIR_UNIXPATHS);
-
 	spl_ce_RecursiveDirectoryIterator = register_class_RecursiveDirectoryIterator(spl_ce_FilesystemIterator, spl_ce_RecursiveIterator);
 	spl_ce_RecursiveDirectoryIterator->create_object = spl_filesystem_object_new;
 
@@ -2834,11 +2786,6 @@ PHP_MINIT_FUNCTION(spl_directory)
 
 	spl_ce_SplFileObject = register_class_SplFileObject(spl_ce_SplFileInfo, spl_ce_RecursiveIterator, spl_ce_SeekableIterator);
 	spl_ce_SplFileObject->create_object = spl_filesystem_object_new_check;
-
-	REGISTER_SPL_CLASS_CONST_LONG(SplFileObject, "DROP_NEW_LINE", SPL_FILE_OBJECT_DROP_NEW_LINE);
-	REGISTER_SPL_CLASS_CONST_LONG(SplFileObject, "READ_AHEAD",    SPL_FILE_OBJECT_READ_AHEAD);
-	REGISTER_SPL_CLASS_CONST_LONG(SplFileObject, "SKIP_EMPTY",    SPL_FILE_OBJECT_SKIP_EMPTY);
-	REGISTER_SPL_CLASS_CONST_LONG(SplFileObject, "READ_CSV",      SPL_FILE_OBJECT_READ_CSV);
 
 	spl_ce_SplTempFileObject = register_class_SplTempFileObject(spl_ce_SplFileObject);
 	spl_ce_SplTempFileObject->create_object = spl_filesystem_object_new_check;

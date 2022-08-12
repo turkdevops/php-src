@@ -627,7 +627,6 @@ static void custom_zend_execute_ex(zend_execute_data *execute_data)
 PHP_MINIT_FUNCTION(zend_test)
 {
 	zend_test_interface = register_class__ZendTestInterface();
-	zend_declare_class_constant_long(zend_test_interface, ZEND_STRL("DUMMY"), 0);
 
 	zend_test_class = register_class__ZendTestClass(zend_test_interface);
 	zend_test_class->create_object = zend_test_class_new;
@@ -757,6 +756,7 @@ PHP_MSHUTDOWN_FUNCTION(zend_test)
 PHP_RINIT_FUNCTION(zend_test)
 {
 	zend_hash_init(&ZT_G(global_weakmap), 8, NULL, ZVAL_PTR_DTOR, 0);
+	ZT_G(observer_nesting_depth) = 0;
 	return SUCCESS;
 }
 
@@ -776,6 +776,13 @@ static PHP_GINIT_FUNCTION(zend_test)
 	ZEND_TSRMLS_CACHE_UPDATE();
 #endif
 	memset(zend_test_globals, 0, sizeof(*zend_test_globals));
+
+	zend_test_observer_ginit(zend_test_globals);
+}
+
+static PHP_GSHUTDOWN_FUNCTION(zend_test)
+{
+	zend_test_observer_gshutdown(zend_test_globals);
 }
 
 PHP_MINFO_FUNCTION(zend_test)
@@ -799,7 +806,7 @@ zend_module_entry zend_test_module_entry = {
 	PHP_ZEND_TEST_VERSION,
 	PHP_MODULE_GLOBALS(zend_test),
 	PHP_GINIT(zend_test),
-	NULL,
+	PHP_GSHUTDOWN(zend_test),
 	NULL,
 	STANDARD_MODULE_PROPERTIES_EX
 };

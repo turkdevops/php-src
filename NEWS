@@ -1,6 +1,38 @@
 PHP                                                                        NEWS
 |||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
-?? ??? ????, PHP 8.2.0beta2
+?? ??? ????, PHP 8.2.0beta3
+
+- Core:
+  . Fixed incorrect double to long casting in latest clang. (zeriyoshi)
+  . Added support for defining constants in traits. (sj-i)
+  . Stop incorrectly emitting false positive deprecation notice alongside
+    unsupported syntax fatal error for `"{$g{'h'}}"`. (TysonAndre)
+
+- MBString:
+  . Fixed bug GH-9248 (Segmentation fault in mb_strimwidth()). (cmb)
+
+- Random:
+  . Fixed bug GH-9235 (non-existant $sequence parameter in stub for
+    PcgOneseq128XslRr64::__construct()). (timwolla)
+  . Fixed bug GH-9190, GH-9191 (undefined behavior for MT_RAND_PHP when
+    handling large ranges). (timwolla)
+  . Fixed bug GH-9249 (Xoshiro256StarStar does not reject the invalid
+    all-zero state). (timwolla)
+  . Removed redundant RuntimeExceptions from Randomizer methods. The
+    exceptions thrown by the engines will be exposed directly. (timwolla)
+  . Added extension specific Exceptions/Errors (RandomException, RandomError,
+    BrokenRandomEngineError). (timwolla)
+
+- Standard:
+  . Fixed bug #65489 (glob() basedir check is inconsistent). (Jakub Zelenka)
+  . Fixed GH-9200 (setcookie has an obsolete expires date format). (Derick)
+  . Fixed GH-9244 (Segfault with array_multisort + array_shift). (cmb)
+
+04 Aug 2022, PHP 8.2.0beta2
+
+- Core:
+  . Fixed bug GH-7900 (Arrow function with never return type compile-time
+    errors). (ilutov)
 
 - Date:
   . Fixed bug GH-8730 (DateTime::diff miscalculation is same time zone of
@@ -23,6 +55,14 @@ PHP                                                                        NEWS
   . Fixed bug GH-9090 (Support assigning function pointers in FFI). (Adam
     Saponara)
 
+- Intl:
+  . Declared Transliterator::$id as readonly to unlock subclassing it. (Nicolas
+    Grekas)
+
+- OPcache:
+  . Fixed bug GH-9164 (Segfault in zend_accel_class_hash_copy).
+    (Arnaud, Sergei Turchanov)
+
 - PCNTL:
   . Fixed pcntl_(get|set)priority error handling for MacOS. (Juan Morales)
 
@@ -34,9 +74,13 @@ PHP                                                                        NEWS
   . Fixed bug GH-9088, GH-9056 (incorrect expansion of bytes when
     generating uniform integers within a given range). (timwolla)
   . Fixed bug GH-9089 (Fix memory leak on Randomizer::__construct()
-    call twice) (zeriyoshi)
-  . Change Mt19937 to throw a ValueError instead of InvalidArgumentException
+    call twice). (zeriyoshi)
+  . Fixed bug GH-9212 (PcgOneseq128XslRr64::jump() should not allow negative
+    $advance). (Anton Smirnov)
+  . Changed Mt19937 to throw a ValueError instead of InvalidArgumentException
     for invalid $mode. (timwolla)
+  . Splitted Random\Randomizer::getInt() (without arguments) to
+    Random\Randomizer::nextInt(). (zeriyoshi)
 
 - Sockets:
   . Added SOL_FILTER socket option for Solaris. (David Carlier)
@@ -46,10 +90,6 @@ PHP                                                                        NEWS
     (cmb)
   . Fixed bug #65069 (GlobIterator incorrect handling of open_basedir check).
     (Jakub Zelenka)
-
-- Core:
-  . Fixed bug GH-7900 (Arrow function with never return type compile-time
-    errors). (ilutov)
 
 21 Jul 2022, PHP 8.2.0beta1
 
