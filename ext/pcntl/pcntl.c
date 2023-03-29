@@ -58,6 +58,8 @@
 
 #include "pcntl_arginfo.h"
 
+#include "Zend/zend_max_execution_timer.h"
+
 ZEND_DECLARE_MODULE_GLOBALS(pcntl)
 static PHP_GINIT_FUNCTION(pcntl);
 
@@ -140,10 +142,18 @@ PHP_MSHUTDOWN_FUNCTION(pcntl)
 PHP_RSHUTDOWN_FUNCTION(pcntl)
 {
 	struct php_pcntl_pending_signal *sig;
+	zend_long signo;
+	zval *handle;
 
-	/* FIXME: if a signal is delivered after this point, things will go pear shaped;
-	 * need to remove signal handlers */
+	/* Reset all signals to their default disposition */
+	ZEND_HASH_FOREACH_NUM_KEY_VAL(&PCNTL_G(php_signal_table), signo, handle) {
+		if (Z_TYPE_P(handle) != IS_LONG || Z_LVAL_P(handle) != (zend_long)SIG_DFL) {
+			php_signal(signo, (Sigfunc *)(zend_long)SIG_DFL, 0);
+		}
+	} ZEND_HASH_FOREACH_END();
+
 	zend_hash_destroy(&PCNTL_G(php_signal_table));
+
 	while (PCNTL_G(head)) {
 		sig = PCNTL_G(head);
 		PCNTL_G(head) = sig->next;
@@ -154,13 +164,14 @@ PHP_RSHUTDOWN_FUNCTION(pcntl)
 		PCNTL_G(spares) = sig->next;
 		efree(sig);
 	}
+
 	return SUCCESS;
 }
 
 PHP_MINFO_FUNCTION(pcntl)
 {
 	php_info_print_table_start();
-	php_info_print_table_header(2, "pcntl support", "enabled");
+	php_info_print_table_row(2, "pcntl support", "enabled");
 	php_info_print_table_end();
 }
 
@@ -175,6 +186,8 @@ PHP_FUNCTION(pcntl_fork)
 	if (id == -1) {
 		PCNTL_G(last_error) = errno;
 		php_error_docref(NULL, E_WARNING, "Error %d", errno);
+	} else if (id == 0) {
+		zend_max_execution_timer_init();
 	}
 
 	RETURN_LONG((zend_long) id);
@@ -645,7 +658,7 @@ PHP_FUNCTION(pcntl_signal)
 		zend_string *func_name = zend_get_callable_name(handle);
 		PCNTL_G(last_error) = EINVAL;
 
-		zend_argument_type_error(2, "must be of type callable|int, %s given", zend_zval_type_name(handle));
+		zend_argument_type_error(2, "must be of type callable|int, %s given", zend_zval_value_name(handle));
 		zend_string_release_ex(func_name, 0);
 		efree(error);
 		RETURN_THROWS();
@@ -1065,7 +1078,7 @@ static void pcntl_signal_handler(int signo)
 	}
 }
 
-void pcntl_signal_dispatch()
+void pcntl_signal_dispatch(void)
 {
 	zval params[2], *handle, retval;
 	struct php_pcntl_pending_signal *queue, *next;

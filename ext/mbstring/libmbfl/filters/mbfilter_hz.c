@@ -47,7 +47,8 @@ const mbfl_encoding mbfl_encoding_hz = {
 	&vtbl_hz_wchar,
 	&vtbl_wchar_hz,
 	mb_hz_to_wchar,
-	mb_wchar_to_hz
+	mb_wchar_to_hz,
+	NULL
 };
 
 const struct mbfl_convert_vtbl vtbl_hz_wchar = {
@@ -153,6 +154,8 @@ static int mbfl_filt_conv_hz_wchar_flush(mbfl_convert_filter *filter)
 		/* 2-byte character was truncated */
 		CK((*filter->output_function)(MBFL_BAD_INPUT, filter->data));
 	}
+
+	filter->status = 0;
 
 	if (filter->flush_function) {
 		(*filter->flush_function)(filter->data);

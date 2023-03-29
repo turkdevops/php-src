@@ -67,7 +67,8 @@ const mbfl_encoding mbfl_encoding_euc_cn = {
 	&vtbl_euccn_wchar,
 	&vtbl_wchar_euccn,
 	mb_euccn_to_wchar,
-	mb_wchar_to_euccn
+	mb_wchar_to_euccn,
+	NULL
 };
 
 const struct mbfl_convert_vtbl vtbl_euccn_wchar = {
@@ -209,6 +210,7 @@ static int mbfl_filt_conv_euccn_wchar_flush(mbfl_convert_filter *filter)
 {
 	if (filter->status == 1) {
 		/* 2-byte character was truncated */
+		filter->status = 0;
 		CK((*filter->output_function)(MBFL_BAD_INPUT, filter->data));
 	}
 

@@ -54,6 +54,9 @@ abstract class ReflectionFunctionAbstract implements Reflector
     /** @tentative-return-type */
     public function getClosureScopeClass(): ?ReflectionClass {}
 
+    /** @tentative-return-type */
+    public function getClosureCalledClass(): ?ReflectionClass {}
+
     public function getClosureUsedVariables(): array {}
 
     /** @tentative-return-type */
@@ -401,7 +404,7 @@ class ReflectionClass implements Reflector
     public function isSubclassOf(ReflectionClass|string $class): bool {}
 
     /** @tentative-return-type */
-    public function getStaticProperties(): ?array {}
+    public function getStaticProperties(): array {}
 
     /** @tentative-return-type */
     public function getStaticPropertyValue(string $name, mixed $default = UNKNOWN): mixed {}
@@ -871,9 +874,9 @@ final class ReflectionFiber
 
     public function getFiber(): Fiber {}
 
-    public function getExecutingFile(): string {}
+    public function getExecutingFile(): ?string {}
 
-    public function getExecutingLine(): int {}
+    public function getExecutingLine(): ?int {}
 
     public function getCallable(): callable {}
 

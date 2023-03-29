@@ -344,14 +344,11 @@ static zend_object *spl_dllist_object_new_ex(zend_class_entry *class_type, zend_
 	while (parent) {
 		if (parent == spl_ce_SplStack) {
 			intern->flags |= (SPL_DLLIST_IT_FIX | SPL_DLLIST_IT_LIFO);
-			intern->std.handlers = &spl_handler_SplDoublyLinkedList;
 		} else if (parent == spl_ce_SplQueue) {
 			intern->flags |= SPL_DLLIST_IT_FIX;
-			intern->std.handlers = &spl_handler_SplDoublyLinkedList;
 		}
 
 		if (parent == spl_ce_SplDoublyLinkedList) {
-			intern->std.handlers = &spl_handler_SplDoublyLinkedList;
 			break;
 		}
 
@@ -1226,7 +1223,7 @@ static const zend_object_iterator_funcs spl_dllist_it_funcs = {
 	NULL, /* get_gc */
 }; /* }}} */
 
-zend_object_iterator *spl_dllist_get_iterator(zend_class_entry *ce, zval *object, int by_ref) /* {{{ */
+static zend_object_iterator *spl_dllist_get_iterator(zend_class_entry *ce, zval *object, int by_ref) /* {{{ */
 {
 	spl_dllist_object *dllist_object = Z_SPLDLLIST_P(object);
 
@@ -1257,6 +1254,7 @@ PHP_MINIT_FUNCTION(spl_dllist) /* {{{ */
 		zend_ce_iterator, zend_ce_countable, zend_ce_arrayaccess, zend_ce_serializable
 	);
 	spl_ce_SplDoublyLinkedList->create_object = spl_dllist_object_new;
+	spl_ce_SplDoublyLinkedList->default_object_handlers = &spl_handler_SplDoublyLinkedList;
 	spl_ce_SplDoublyLinkedList->get_iterator = spl_dllist_get_iterator;
 
 	memcpy(&spl_handler_SplDoublyLinkedList, &std_object_handlers, sizeof(zend_object_handlers));

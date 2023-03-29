@@ -51,7 +51,8 @@ const mbfl_encoding mbfl_encoding_2022jpms = {
 	&vtbl_2022jpms_wchar,
 	&vtbl_wchar_2022jpms,
 	mb_iso2022jpms_to_wchar,
-	mb_wchar_to_iso2022jpms
+	mb_wchar_to_iso2022jpms,
+	NULL
 };
 
 const struct mbfl_convert_vtbl vtbl_2022jpms_wchar = {
@@ -219,6 +220,7 @@ static int mbfl_filt_conv_2022jpms_wchar_flush(mbfl_convert_filter *filter)
 	if (filter->status & 0xF) {
 		(*filter->output_function)(MBFL_BAD_INPUT, filter->data);
 	}
+	filter->status = 0;
 
 	if (filter->flush_function) {
 		(*filter->flush_function)(filter->data);
@@ -354,6 +356,7 @@ int mbfl_filt_conv_any_2022jpms_flush(mbfl_convert_filter *filter)
 		CK((*filter->output_function)('(', filter->data));
 		CK((*filter->output_function)('B', filter->data));
 	}
+	filter->status = 0;
 
 	if (filter->flush_function) {
 		(*filter->flush_function)(filter->data);

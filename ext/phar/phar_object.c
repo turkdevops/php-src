@@ -1435,7 +1435,7 @@ static int phar_build(zend_object_iterator *iter, void *puser) /* {{{ */
 			}
 
 			close_fp = 0;
-			opened = zend_string_init("[stream]", sizeof("[stream]") - 1, 0);
+			opened = ZSTR_INIT_LITERAL("[stream]", 0);
 			goto after_open_fp;
 		case IS_OBJECT:
 			if (instanceof_function(Z_OBJCE_P(value), spl_ce_SplFileInfo)) {
@@ -1975,7 +1975,7 @@ static zend_object *phar_rename_archive(phar_archive_data **sphar, char *ext) /*
 	char *ext_pos = NULL;
 	/* Array of PHAR extensions, Must be in order, starting with longest
 	 * ending with the shortest. */
-	char *phar_ext_list[] = {
+	static const char *const phar_ext_list[] = {
 		".phar.tar.bz2",
 		".phar.tar.gz",
 		".phar.php",
@@ -2113,10 +2113,12 @@ static zend_object *phar_rename_archive(phar_archive_data **sphar, char *ext) /*
 				pphar->flags = phar->flags;
 				pphar->fp = phar->fp;
 				phar->fp = NULL;
+				/* FIX: GH-10755 Double-free issue caught by ASAN check */
+				pphar->alias = phar->alias; /* Transfer alias to pphar to */
+				phar->alias = NULL;         /* avoid being free'd twice   */
 				phar_destroy_phar_data(phar);
 				*sphar = NULL;
 				phar = pphar;
-				phar->refcount++;
 				newpath = oldpath;
 				goto its_ok;
 			}
@@ -2606,16 +2608,14 @@ PHP_METHOD(Phar, delete)
 		zend_throw_exception_ex(phar_ce_PharException, 0, "phar \"%s\" is persistent, unable to copy on write", phar_obj->archive->fname);
 		RETURN_THROWS();
 	}
-	if (zend_hash_str_exists(&phar_obj->archive->manifest, fname, (uint32_t) fname_len)) {
-		if (NULL != (entry = zend_hash_str_find_ptr(&phar_obj->archive->manifest, fname, (uint32_t) fname_len))) {
-			if (entry->is_deleted) {
-				/* entry is deleted, but has not been flushed to disk yet */
-				RETURN_TRUE;
-			} else {
-				entry->is_deleted = 1;
-				entry->is_modified = 1;
-				phar_obj->archive->is_modified = 1;
-			}
+	if (NULL != (entry = zend_hash_str_find_ptr(&phar_obj->archive->manifest, fname, (uint32_t) fname_len))) {
+		if (entry->is_deleted) {
+			/* entry is deleted, but has not been flushed to disk yet */
+			RETURN_TRUE;
+		} else {
+			entry->is_deleted = 1;
+			entry->is_modified = 1;
+			phar_obj->archive->is_modified = 1;
 		}
 	} else {
 		zend_throw_exception_ex(spl_ce_BadMethodCallException, 0, "Entry %s does not exist and cannot be deleted", fname);
@@ -3314,7 +3314,7 @@ PHP_METHOD(Phar, compressFiles)
 	}
 
 	if (!pharobj_cancompress(&phar_obj->archive->manifest)) {
-		if (flags == PHAR_FILE_COMPRESSED_GZ) {
+		if (flags == PHAR_ENT_COMPRESSED_GZ) {
 			zend_throw_exception_ex(spl_ce_BadMethodCallException, 0,
 				"Cannot compress all files as Gzip, some are compressed as bzip2 and cannot be decompressed");
 		} else {
@@ -3420,18 +3420,16 @@ PHP_METHOD(Phar, copy)
 		RETURN_THROWS();
 	}
 
-	if (!zend_hash_str_exists(&phar_obj->archive->manifest, oldfile, (uint32_t) oldfile_len) || NULL == (oldentry = zend_hash_str_find_ptr(&phar_obj->archive->manifest, oldfile, (uint32_t) oldfile_len)) || oldentry->is_deleted) {
+	if (NULL == (oldentry = zend_hash_str_find_ptr(&phar_obj->archive->manifest, oldfile, (uint32_t) oldfile_len)) || oldentry->is_deleted) {
 		zend_throw_exception_ex(spl_ce_UnexpectedValueException, 0,
 			"file \"%s\" cannot be copied to file \"%s\", file does not exist in %s", oldfile, newfile, phar_obj->archive->fname);
 		RETURN_THROWS();
 	}
 
-	if (zend_hash_str_exists(&phar_obj->archive->manifest, newfile, (uint32_t) newfile_len)) {
-		if (NULL != (temp = zend_hash_str_find_ptr(&phar_obj->archive->manifest, newfile, (uint32_t) newfile_len)) || !temp->is_deleted) {
-			zend_throw_exception_ex(spl_ce_UnexpectedValueException, 0,
-				"file \"%s\" cannot be copied to file \"%s\", file must not already exist in phar %s", oldfile, newfile, phar_obj->archive->fname);
-			RETURN_THROWS();
-		}
+	if (NULL != (temp = zend_hash_str_find_ptr(&phar_obj->archive->manifest, newfile, (uint32_t) newfile_len)) && !temp->is_deleted) {
+		zend_throw_exception_ex(spl_ce_UnexpectedValueException, 0,
+			"file \"%s\" cannot be copied to file \"%s\", file must not already exist in phar %s", oldfile, newfile, phar_obj->archive->fname);
+		RETURN_THROWS();
 	}
 
 	tmp_len = newfile_len;

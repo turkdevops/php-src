@@ -1546,8 +1546,7 @@ static void* XXH_memcpy(void* dest, const void* src, size_t size)
 /* note: use after variable declarations */
 #ifndef XXH_STATIC_ASSERT
 #  if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 201112L)    /* C11 */
-#    include <assert.h>
-#    define XXH_STATIC_ASSERT_WITH_MESSAGE(c,m) do { static_assert((c),m); } while(0)
+#    define XXH_STATIC_ASSERT_WITH_MESSAGE(c,m) do { _Static_assert((c),m); } while(0)
 #  elif defined(__cplusplus) && (__cplusplus >= 201103L)            /* C++11 */
 #    define XXH_STATIC_ASSERT_WITH_MESSAGE(c,m) do { static_assert((c),m); } while(0)
 #  else
@@ -4129,7 +4128,7 @@ XXH3_accumulate_512_vsx(  void* XXH_RESTRICT acc,
                     const void* XXH_RESTRICT secret)
 {
     /* presumed aligned */
-    unsigned long long* const xacc = (unsigned long long*) acc;
+    unsigned int* const xacc = (unsigned int*) acc;
     xxh_u64x2 const* const xinput   = (xxh_u64x2 const*) input;   /* no alignment restriction */
     xxh_u64x2 const* const xsecret  = (xxh_u64x2 const*) secret;    /* no alignment restriction */
     xxh_u64x2 const v32 = { 32, 32 };
@@ -4145,7 +4144,7 @@ XXH3_accumulate_512_vsx(  void* XXH_RESTRICT acc,
         /* product = ((xxh_u64x2)data_key & 0xFFFFFFFF) * ((xxh_u64x2)shuffled & 0xFFFFFFFF); */
         xxh_u64x2 const product  = XXH_vec_mulo((xxh_u32x4)data_key, shuffled);
         /* acc_vec = xacc[i]; */
-        xxh_u64x2 acc_vec        = vec_xl(0, xacc + 2 * i);
+        xxh_u64x2 acc_vec        = (xxh_u64x2)vec_xl(0, xacc + 4 * i);
         acc_vec += product;
 
         /* swap high and low halves */
@@ -4155,7 +4154,7 @@ XXH3_accumulate_512_vsx(  void* XXH_RESTRICT acc,
         acc_vec += vec_xxpermdi(data_vec, data_vec, 2);
 #endif
         /* xacc[i] = acc_vec; */
-        vec_xst(acc_vec, 0, xacc + 2 * i);
+        vec_xst((xxh_u32x4)acc_vec, 0, xacc + 4 * i);
     }
 }
 

@@ -57,9 +57,9 @@ static bool will_rejoin(
 	return 0;
 }
 
-static bool needs_pi(const zend_op_array *op_array, zend_dfg *dfg, zend_ssa *ssa, int from, int to, int var) /* {{{ */
+static bool needs_pi(const zend_op_array *op_array, const zend_dfg *dfg, const zend_ssa *ssa, int from, int to, int var) /* {{{ */
 {
-	zend_basic_block *from_block, *to_block;
+	const zend_basic_block *from_block, *to_block;
 	int other_successor;
 
 	if (!DFG_ISSET(dfg->in, dfg->size, to, var)) {
@@ -588,12 +588,6 @@ add_op1_def:
 			break;
 		case ZEND_ASSIGN_DIM:
 		case ZEND_ASSIGN_OBJ:
-			if (opline->op1_type == IS_CV) {
-				ssa_ops[k].op1_def = ssa_vars_count;
-				var[EX_VAR_TO_NUM(opline->op1.var)] = ssa_vars_count;
-				ssa_vars_count++;
-				//NEW_SSA_VAR(opline->op1.var)
-			}
 			next = opline + 1;
 			if (next->op1_type & (IS_CV|IS_VAR|IS_TMP_VAR)) {
 				ssa_ops[k + 1].op1_use = var[EX_VAR_TO_NUM(next->op1.var)];
@@ -604,6 +598,12 @@ add_op1_def:
 					ssa_vars_count++;
 					//NEW_SSA_VAR(next->op1.var)
 				}
+			}
+			if (opline->op1_type == IS_CV) {
+				ssa_ops[k].op1_def = ssa_vars_count;
+				var[EX_VAR_TO_NUM(opline->op1.var)] = ssa_vars_count;
+				ssa_vars_count++;
+				//NEW_SSA_VAR(opline->op1.var)
 			}
 			break;
 		case ZEND_ASSIGN_OBJ_REF:

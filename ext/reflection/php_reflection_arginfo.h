@@ -1,5 +1,5 @@
 /* This is a generated file, edit the .stub.php file instead.
- * Stub hash: 25b36d66ab7fb88b8d44d51e15e530ebff2e1e2c */
+ * Stub hash: f640c1b592a7e9e7a8e92195df579bfaaa3da6dc */
 
 ZEND_BEGIN_ARG_WITH_TENTATIVE_RETURN_TYPE_INFO_EX(arginfo_class_Reflection_getModifierNames, 0, 1, IS_ARRAY, 0)
 	ZEND_ARG_TYPE_INFO(0, modifiers, IS_LONG, 0)
@@ -30,6 +30,8 @@ ZEND_END_ARG_INFO()
 
 ZEND_BEGIN_ARG_WITH_TENTATIVE_RETURN_OBJ_INFO_EX(arginfo_class_ReflectionFunctionAbstract_getClosureScopeClass, 0, 0, ReflectionClass, 1)
 ZEND_END_ARG_INFO()
+
+#define arginfo_class_ReflectionFunctionAbstract_getClosureCalledClass arginfo_class_ReflectionFunctionAbstract_getClosureScopeClass
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_ReflectionFunctionAbstract_getClosureUsedVariables, 0, 0, IS_ARRAY, 0)
 ZEND_END_ARG_INFO()
@@ -286,8 +288,7 @@ ZEND_BEGIN_ARG_WITH_TENTATIVE_RETURN_TYPE_INFO_EX(arginfo_class_ReflectionClass_
 	ZEND_ARG_OBJ_TYPE_MASK(0, class, ReflectionClass, MAY_BE_STRING, NULL)
 ZEND_END_ARG_INFO()
 
-ZEND_BEGIN_ARG_WITH_TENTATIVE_RETURN_TYPE_INFO_EX(arginfo_class_ReflectionClass_getStaticProperties, 0, 0, IS_ARRAY, 1)
-ZEND_END_ARG_INFO()
+#define arginfo_class_ReflectionClass_getStaticProperties arginfo_class_ReflectionFunctionAbstract_getParameters
 
 ZEND_BEGIN_ARG_WITH_TENTATIVE_RETURN_TYPE_INFO_EX(arginfo_class_ReflectionClass_getStaticPropertyValue, 0, 1, IS_MIXED, 0)
 	ZEND_ARG_TYPE_INFO(0, name, IS_STRING, 0)
@@ -591,9 +592,11 @@ ZEND_END_ARG_INFO()
 ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(arginfo_class_ReflectionFiber_getFiber, 0, 0, Fiber, 0)
 ZEND_END_ARG_INFO()
 
-#define arginfo_class_ReflectionFiber_getExecutingFile arginfo_class_ReflectionFunction___toString
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_ReflectionFiber_getExecutingFile, 0, 0, IS_STRING, 1)
+ZEND_END_ARG_INFO()
 
-#define arginfo_class_ReflectionFiber_getExecutingLine arginfo_class_ReflectionAttribute_getTarget
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_ReflectionFiber_getExecutingLine, 0, 0, IS_LONG, 1)
+ZEND_END_ARG_INFO()
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_ReflectionFiber_getCallable, 0, 0, IS_CALLABLE, 0)
 ZEND_END_ARG_INFO()
@@ -615,6 +618,7 @@ ZEND_METHOD(ReflectionFunctionAbstract, isVariadic);
 ZEND_METHOD(ReflectionFunctionAbstract, isStatic);
 ZEND_METHOD(ReflectionFunctionAbstract, getClosureThis);
 ZEND_METHOD(ReflectionFunctionAbstract, getClosureScopeClass);
+ZEND_METHOD(ReflectionFunctionAbstract, getClosureCalledClass);
 ZEND_METHOD(ReflectionFunctionAbstract, getClosureUsedVariables);
 ZEND_METHOD(ReflectionFunctionAbstract, getDocComment);
 ZEND_METHOD(ReflectionFunctionAbstract, getEndLine);
@@ -861,6 +865,7 @@ static const zend_function_entry class_ReflectionFunctionAbstract_methods[] = {
 	ZEND_ME(ReflectionFunctionAbstract, isStatic, arginfo_class_ReflectionFunctionAbstract_isStatic, ZEND_ACC_PUBLIC)
 	ZEND_ME(ReflectionFunctionAbstract, getClosureThis, arginfo_class_ReflectionFunctionAbstract_getClosureThis, ZEND_ACC_PUBLIC)
 	ZEND_ME(ReflectionFunctionAbstract, getClosureScopeClass, arginfo_class_ReflectionFunctionAbstract_getClosureScopeClass, ZEND_ACC_PUBLIC)
+	ZEND_ME(ReflectionFunctionAbstract, getClosureCalledClass, arginfo_class_ReflectionFunctionAbstract_getClosureCalledClass, ZEND_ACC_PUBLIC)
 	ZEND_ME(ReflectionFunctionAbstract, getClosureUsedVariables, arginfo_class_ReflectionFunctionAbstract_getClosureUsedVariables, ZEND_ACC_PUBLIC)
 	ZEND_ME(ReflectionFunctionAbstract, getDocComment, arginfo_class_ReflectionFunctionAbstract_getDocComment, ZEND_ACC_PUBLIC)
 	ZEND_ME(ReflectionFunctionAbstract, getEndLine, arginfo_class_ReflectionFunctionAbstract_getEndLine, ZEND_ACC_PUBLIC)

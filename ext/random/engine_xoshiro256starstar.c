@@ -36,7 +36,7 @@ static inline uint64_t splitmix64(uint64_t *seed)
 	return (r ^ (r >> 31));
 }
 
-static inline uint64_t rotl(const uint64_t x, int k)
+ZEND_ATTRIBUTE_CONST static inline uint64_t rotl(const uint64_t x, int k)
 {
 	return (x << k) | (x >> (64 - k));
 }
@@ -130,6 +130,11 @@ static bool unserialize(php_random_status *status, HashTable *data)
 {
 	php_random_status_state_xoshiro256starstar *s = status->state;
 	zval *t;
+
+	/* Verify the expected number of elements, this implicitly ensures that no additional elements are present. */
+	if (zend_hash_num_elements(data) != 4) {
+		return false;
+	}
 
 	for (uint32_t i = 0; i < 4; i++) {
 		t = zend_hash_index_find(data, i);

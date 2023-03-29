@@ -69,7 +69,8 @@ const mbfl_encoding mbfl_encoding_cp51932 = {
 	&vtbl_cp51932_wchar,
 	&vtbl_wchar_cp51932,
 	mb_cp51932_to_wchar,
-	mb_wchar_to_cp51932
+	mb_wchar_to_cp51932,
+	NULL
 };
 
 const struct mbfl_convert_vtbl vtbl_cp51932_wchar = {
@@ -178,6 +179,7 @@ static int mbfl_filt_conv_cp51932_wchar_flush(mbfl_convert_filter *filter)
 	if (filter->status) {
 		/* Input string was truncated */
 		(*filter->output_function)(MBFL_BAD_INPUT, filter->data);
+		filter->status = 0;
 	}
 
 	if (filter->flush_function) {

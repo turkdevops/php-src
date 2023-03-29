@@ -1622,11 +1622,12 @@ static inline char *phar_strnstr(const char *buf, int buf_len, const char *searc
  */
 static int phar_open_from_fp(php_stream* fp, char *fname, size_t fname_len, char *alias, size_t alias_len, uint32_t options, phar_archive_data** pphar, int is_data, char **error) /* {{{ */
 {
-	const char token[] = "__HALT_COMPILER();";
-	const char zip_magic[] = "PK\x03\x04";
-	const char gz_magic[] = "\x1f\x8b\x08";
-	const char bz_magic[] = "BZh";
+	static const char token[] = "__HALT_COMPILER();";
+	static const char zip_magic[] = "PK\x03\x04";
+	static const char gz_magic[] = "\x1f\x8b\x08";
+	static const char bz_magic[] = "BZh";
 	char *pos, test = '\0';
+	int recursion_count = 3; // arbitrary limit to avoid too deep or even infinite recursion
 	const int window_size = 1024;
 	char buffer[1024 + sizeof(token)]; /* a 1024 byte window + the size of the halt_compiler token (moving window) */
 	const zend_long readsize = sizeof(buffer) - sizeof(token);
@@ -1654,7 +1655,7 @@ static int phar_open_from_fp(php_stream* fp, char *fname, size_t fname_len, char
 			MAPPHAR_ALLOC_FAIL("internal corruption of phar \"%s\" (truncated entry)")
 		}
 
-		if (!test) {
+		if (!test && recursion_count) {
 			test = '\1';
 			pos = buffer+tokenlen;
 			if (!memcmp(pos, gz_magic, 3)) {
@@ -1716,6 +1717,10 @@ static int phar_open_from_fp(php_stream* fp, char *fname, size_t fname_len, char
 
 				/* now, start over */
 				test = '\0';
+				if (!--recursion_count) {
+					MAPPHAR_ALLOC_FAIL("unable to decompress gzipped phar archive \"%s\"");
+					break;
+				}
 				continue;
 			} else if (!memcmp(pos, bz_magic, 3)) {
 				php_stream_filter *filter;
@@ -1754,6 +1759,10 @@ static int phar_open_from_fp(php_stream* fp, char *fname, size_t fname_len, char
 
 				/* now, start over */
 				test = '\0';
+				if (!--recursion_count) {
+					MAPPHAR_ALLOC_FAIL("unable to decompress bzipped phar archive \"%s\"");
+					break;
+				}
 				continue;
 			}
 
@@ -3565,7 +3574,7 @@ PHP_MINFO_FUNCTION(phar) /* {{{ */
 {
 	phar_request_initialize();
 	php_info_print_table_start();
-	php_info_print_table_header(2, "Phar: PHP Archive support", "enabled");
+	php_info_print_table_row(2, "Phar: PHP Archive support", "enabled");
 	php_info_print_table_row(2, "Phar API version", PHP_PHAR_API_VERSION);
 	php_info_print_table_row(2, "Phar-based phar archives", "enabled");
 	php_info_print_table_row(2, "Tar-based phar archives", "enabled");

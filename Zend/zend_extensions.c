@@ -63,11 +63,10 @@ zend_result zend_load_extension_handle(DL_HANDLE handle, const char *path)
 {
 #if ZEND_EXTENSIONS_SUPPORT
 	zend_extension *new_extension;
-	zend_extension_version_info *extension_version_info;
 
-	extension_version_info = (zend_extension_version_info *) DL_FETCH_SYMBOL(handle, "extension_version_info");
+	const zend_extension_version_info *extension_version_info = (const zend_extension_version_info *) DL_FETCH_SYMBOL(handle, "extension_version_info");
 	if (!extension_version_info) {
-		extension_version_info = (zend_extension_version_info *) DL_FETCH_SYMBOL(handle, "_extension_version_info");
+		extension_version_info = (const zend_extension_version_info *) DL_FETCH_SYMBOL(handle, "_extension_version_info");
 	}
 	new_extension = (zend_extension *) DL_FETCH_SYMBOL(handle, "zend_extension_entry");
 	if (!new_extension) {
@@ -280,11 +279,11 @@ ZEND_API int zend_get_op_array_extension_handles(const char *module_name, int ha
 	return handle;
 }
 
-ZEND_API size_t zend_internal_run_time_cache_reserved_size() {
+ZEND_API size_t zend_internal_run_time_cache_reserved_size(void) {
 	return zend_op_array_extension_handles * sizeof(void *);
 }
 
-ZEND_API void zend_init_internal_run_time_cache() {
+ZEND_API void zend_init_internal_run_time_cache(void) {
 	size_t rt_size = zend_internal_run_time_cache_reserved_size();
 	if (rt_size) {
 		size_t functions = zend_hash_num_elements(CG(function_table));

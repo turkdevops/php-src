@@ -50,7 +50,7 @@ void validate_attribute(zend_attribute *attr, uint32_t target, zend_class_entry 
 		if (Z_TYPE(flags) != IS_LONG) {
 			zend_error_noreturn(E_ERROR,
 				"Attribute::__construct(): Argument #1 ($flags) must be of type int, %s given",
-				zend_zval_type_name(&flags)
+				zend_zval_value_name(&flags)
 			);
 		}
 
@@ -129,18 +129,6 @@ ZEND_METHOD(SensitiveParameterValue, __debugInfo)
 	ZEND_PARSE_PARAMETERS_NONE();
 
 	RETURN_EMPTY_ARRAY();
-}
-
-static zend_object *attributes_sensitive_parameter_value_new(zend_class_entry *ce)
-{
-	zend_object *object;
-
-	object = zend_objects_new(ce);
-	object->handlers = &attributes_object_handlers_sensitive_parameter_value;
-
-	object_properties_init(object, ce);
-
-	return object;
 }
 
 static HashTable *attributes_sensitive_parameter_value_get_properties_for(zend_object *zobj, zend_prop_purpose purpose)
@@ -382,7 +370,7 @@ void zend_register_attribute_ce(void)
 
 	/* This is not an actual attribute, thus the zend_mark_internal_attribute() call is missing. */
 	zend_ce_sensitive_parameter_value = register_class_SensitiveParameterValue();
-	zend_ce_sensitive_parameter_value->create_object = attributes_sensitive_parameter_value_new;
+	zend_ce_sensitive_parameter_value->default_object_handlers = &attributes_object_handlers_sensitive_parameter_value;
 }
 
 void zend_attributes_shutdown(void)

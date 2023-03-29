@@ -60,6 +60,14 @@ struct _WSAMSG {
 #define MAX_USER_BUFF_SIZE ((size_t)(100*1024*1024))
 #define DEFAULT_BUFF_SIZE 8192
 
+/* The CMSG_DATA macro does pointer arithmetics on NULL which triggers errors in the Clang UBSAN build */
+#ifdef __has_feature
+# if __has_feature(undefined_behavior_sanitizer)
+#  undef CMSG_DATA
+#  define CMSG_DATA(cmsg) ((unsigned char *) ((uintptr_t) (cmsg) + sizeof(struct cmsghdr)))
+# endif
+#endif
+
 struct _ser_context {
 	HashTable		params; /* stores pointers; has to be first */
 	struct err_s	err;
@@ -720,6 +728,10 @@ static void from_zval_write_sockaddr_aux(const zval *container,
 		zend_llist_add_element(&ctx->keys, &node);
 		from_zval_write_int(elem, (char*)&family, ctx);
 		zend_llist_remove_tail(&ctx->keys);
+
+		if (UNEXPECTED(ctx->err.has_error)) {
+			return;
+		}
 	} else {
 		family = ctx->sock->type;
 	}
@@ -1115,7 +1127,10 @@ static void from_zval_write_controllen(const zval *elem, char *msghdr_c, ser_con
 	 * this least common denominator
 	 */
 	from_zval_write_uint32(elem, (char*)&len, ctx);
-	if (!ctx->err.has_error && len == 0) {
+	if (ctx->err.has_error) {
+		return;
+	}
+	if (len == 0) {
 		do_from_zval_err(ctx, "controllen cannot be 0");
 		return;
 	}

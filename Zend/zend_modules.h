@@ -23,6 +23,7 @@
 #include "zend.h"
 #include "zend_compile.h"
 #include "zend_build.h"
+#include "zend_result.h"
 
 #define INIT_FUNC_ARGS		int type, int module_number
 #define INIT_FUNC_ARGS_PASSTHRU	type, module_number
@@ -31,7 +32,7 @@
 #define ZEND_MODULE_INFO_FUNC_ARGS zend_module_entry *zend_module
 #define ZEND_MODULE_INFO_FUNC_ARGS_PASSTHRU zend_module
 
-#define ZEND_MODULE_API_NO 20210903
+#define ZEND_MODULE_API_NO 20220830
 #ifdef ZTS
 #define USING_ZTS 1
 #else

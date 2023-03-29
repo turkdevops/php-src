@@ -713,6 +713,10 @@ finish:
 				if (tmp_line_len >= 1 &&tmp_line[tmp_line_len - 1] == '\r') {
 					--tmp_line_len;
 				}
+			} else {
+				// read and discard rest of status line
+				char *line = php_stream_get_line(stream, NULL, 0, NULL);
+				efree(line);
 			}
 			ZVAL_STRINGL(&http_response, tmp_line, tmp_line_len);
 			zend_hash_next_index_insert(Z_ARRVAL_P(response_header), &http_response);
@@ -853,7 +857,7 @@ finish:
 							s = ZSTR_VAL(resource->path);
 							if (!ZSTR_LEN(resource->path)) {
 								zend_string_release_ex(resource->path, 0);
-								resource->path = zend_string_init("/", 1, 0);
+								resource->path = ZSTR_INIT_LITERAL("/", 0);
 								s = ZSTR_VAL(resource->path);
 							} else {
 								*s = '/';

@@ -157,7 +157,6 @@ static zend_object *pgsql_link_create_object(zend_class_entry *class_type) {
 
 	zend_object_std_init(&intern->std, class_type);
 	object_properties_init(&intern->std, class_type);
-	intern->std.handlers = &pgsql_link_object_handlers;
 
 	return &intern->std;
 }
@@ -213,7 +212,6 @@ static zend_object *pgsql_result_create_object(zend_class_entry *class_type) {
 
 	zend_object_std_init(&intern->std, class_type);
 	object_properties_init(&intern->std, class_type);
-	intern->std.handlers = &pgsql_result_object_handlers;
 
 	return &intern->std;
 }
@@ -251,7 +249,6 @@ static zend_object *pgsql_lob_create_object(zend_class_entry *class_type) {
 
 	zend_object_std_init(&intern->std, class_type);
 	object_properties_init(&intern->std, class_type);
-	intern->std.handlers = &pgsql_lob_object_handlers;
 
 	return &intern->std;
 }
@@ -440,6 +437,7 @@ PHP_MINIT_FUNCTION(pgsql)
 
 	pgsql_link_ce = register_class_PgSql_Connection();
 	pgsql_link_ce->create_object = pgsql_link_create_object;
+	pgsql_link_ce->default_object_handlers = &pgsql_link_object_handlers;
 
 	memcpy(&pgsql_link_object_handlers, &std_object_handlers, sizeof(zend_object_handlers));
 	pgsql_link_object_handlers.offset = XtOffsetOf(pgsql_link_handle, std);
@@ -450,6 +448,7 @@ PHP_MINIT_FUNCTION(pgsql)
 
 	pgsql_result_ce = register_class_PgSql_Result();
 	pgsql_result_ce->create_object = pgsql_result_create_object;
+	pgsql_result_ce->default_object_handlers = &pgsql_result_object_handlers;
 
 	memcpy(&pgsql_result_object_handlers, &std_object_handlers, sizeof(zend_object_handlers));
 	pgsql_result_object_handlers.offset = XtOffsetOf(pgsql_result_handle, std);
@@ -460,6 +459,7 @@ PHP_MINIT_FUNCTION(pgsql)
 
 	pgsql_lob_ce = register_class_PgSql_Lob();
 	pgsql_lob_ce->create_object = pgsql_lob_create_object;
+	pgsql_lob_ce->default_object_handlers = &pgsql_lob_object_handlers;
 
 	memcpy(&pgsql_lob_object_handlers, &std_object_handlers, sizeof(zend_object_handlers));
 	pgsql_lob_object_handlers.offset = XtOffsetOf(pgLofp, std);
@@ -512,7 +512,7 @@ PHP_MINFO_FUNCTION(pgsql)
 	char buf[256];
 
 	php_info_print_table_start();
-	php_info_print_table_header(2, "PostgreSQL Support", "enabled");
+	php_info_print_table_row(2, "PostgreSQL Support", "enabled");
 	php_info_print_table_row(2, "PostgreSQL (libpq) Version", pgsql_libpq_version);
 #ifdef HAVE_PGSQL_WITH_MULTIBYTE_SUPPORT
 	php_info_print_table_row(2, "Multibyte character support", "enabled");
@@ -1756,11 +1756,11 @@ static void php_pgsql_fetch_hash(INTERNAL_FUNCTION_PARAMETERS, zend_long result_
 	zend_long            row;
 	bool row_is_null = 1;
 	char            *field_name;
-	zval            *ctor_params = NULL;
+	HashTable		*ctor_params = NULL;
 	zend_class_entry *ce = NULL;
 
 	if (into_object) {
-		if (zend_parse_parameters(ZEND_NUM_ARGS(), "O|l!Ca", &result, pgsql_result_ce, &row, &row_is_null, &ce, &ctor_params) == FAILURE) {
+		if (zend_parse_parameters(ZEND_NUM_ARGS(), "O|l!Ch", &result, pgsql_result_ce, &row, &row_is_null, &ce, &ctor_params) == FAILURE) {
 			RETURN_THROWS();
 		}
 		if (!ce) {
@@ -1833,9 +1833,6 @@ static void php_pgsql_fetch_hash(INTERNAL_FUNCTION_PARAMETERS, zend_long result_
 
 	if (into_object) {
 		zval dataset;
-		zend_fcall_info fci;
-		zend_fcall_info_cache fcc;
-		zval retval;
 
 		ZVAL_COPY_VALUE(&dataset, return_value);
 		object_init_ex(return_value, ce);
@@ -1847,34 +1844,10 @@ static void php_pgsql_fetch_hash(INTERNAL_FUNCTION_PARAMETERS, zend_long result_
 		}
 
 		if (ce->constructor) {
-			fci.size = sizeof(fci);
-			ZVAL_UNDEF(&fci.function_name);
-			fci.object = Z_OBJ_P(return_value);
-			fci.retval = &retval;
-			fci.params = NULL;
-			fci.param_count = 0;
-			fci.named_params = NULL;
-
-			if (ctor_params) {
-				if (zend_fcall_info_args(&fci, ctor_params) == FAILURE) {
-					ZEND_UNREACHABLE();
-				}
-			}
-
-			fcc.function_handler = ce->constructor;
-			fcc.called_scope = Z_OBJCE_P(return_value);
-			fcc.object = Z_OBJ_P(return_value);
-
-			if (zend_call_function(&fci, &fcc) == FAILURE) {
-				zend_throw_exception_ex(zend_ce_exception, 0, "Could not execute %s::%s()", ZSTR_VAL(ce->name), ZSTR_VAL(ce->constructor->common.function_name));
-			} else {
-				zval_ptr_dtor(&retval);
-			}
-			if (fci.params) {
-				efree(fci.params);
-			}
-		} else if (ctor_params && zend_hash_num_elements(Z_ARRVAL_P(ctor_params)) > 0) {
-			zend_argument_error(zend_ce_exception, 3,
+			zend_call_known_function(ce->constructor, Z_OBJ_P(return_value), Z_OBJCE_P(return_value),
+				/* retval */ NULL, /* argc */ 0, /* params */ NULL, ctor_params);
+		} else if (ctor_params && zend_hash_num_elements(ctor_params) > 0) {
+			zend_argument_value_error(3,
 				"must be empty when the specified class (%s) does not have a constructor",
 				ZSTR_VAL(ce->name)
 			);
@@ -2254,7 +2227,7 @@ PHP_FUNCTION(pg_lo_create)
 			wanted_oid = (Oid)Z_LVAL_P(oid);
 			break;
 		default:
-			zend_type_error("OID value must be of type string|int, %s given", zend_zval_type_name(oid));
+			zend_type_error("OID value must be of type string|int, %s given", zend_zval_value_name(oid));
 			RETURN_THROWS();
 		}
 		if ((pgsql_oid = lo_create(pgsql, wanted_oid)) == InvalidOid) {
@@ -2364,7 +2337,7 @@ PHP_FUNCTION(pg_lo_open)
 		CHECK_PGSQL_LINK(link);
 	}
 	else if (zend_parse_parameters_ex(ZEND_PARSE_PARAMS_QUIET, ZEND_NUM_ARGS(),
-								 "Ols", &pgsql_link, pgsql_link_ce, &oid_long, &mode) == SUCCESS) {
+								 "OlS", &pgsql_link, pgsql_link_ce, &oid_long, &mode) == SUCCESS) {
 		if (oid_long <= (zend_long)InvalidOid) {
 			zend_value_error("Invalid OID value passed");
 			RETURN_THROWS();
@@ -2625,7 +2598,7 @@ PHP_FUNCTION(pg_lo_import)
 			wanted_oid = (Oid)Z_LVAL_P(oid);
 			break;
 		default:
-			zend_type_error("OID value must be of type string|int, %s given", zend_zval_type_name(oid));
+			zend_type_error("OID value must be of type string|int, %s given", zend_zval_value_name(oid));
 			RETURN_THROWS();
 		}
 
@@ -4164,9 +4137,8 @@ PHP_PGSQL_API zend_result php_pgsql_meta_data(PGconn *pg_link, const zend_string
 	src = estrdup(ZSTR_VAL(table_name));
 	tmp_name = php_strtok_r(src, ".", &tmp_name2);
 	if (!tmp_name) {
-		// TODO ValueError (empty table name)?
 		efree(src);
-		php_error_docref(NULL, E_WARNING, "The table name must be specified");
+		zend_argument_value_error(2, "must be specified (%s)", ZSTR_VAL(table_name));
 		return FAILURE;
 	}
 	if (!tmp_name2 || !*tmp_name2) {
@@ -4243,7 +4215,7 @@ PHP_PGSQL_API zend_result php_pgsql_meta_data(PGconn *pg_link, const zend_string
 			/* pg_type.typtype */
 			add_assoc_bool_ex(&elem, "is base", sizeof("is base") - 1, !strcmp(PQgetvalue(pg_result, i, 7), "b"));
 			add_assoc_bool_ex(&elem, "is composite", sizeof("is composite") - 1, !strcmp(PQgetvalue(pg_result, i, 7), "c"));
-			add_assoc_bool_ex(&elem, "is pesudo", sizeof("is pesudo") - 1, !strcmp(PQgetvalue(pg_result, i, 7), "p"));
+			add_assoc_bool_ex(&elem, "is pseudo", sizeof("is pseudo") - 1, !strcmp(PQgetvalue(pg_result, i, 7), "p"));
 			/* pg_description.description */
 			add_assoc_string_ex(&elem, "description", sizeof("description") - 1, PQgetvalue(pg_result, i, 8));
 		}
@@ -4515,7 +4487,7 @@ PHP_PGSQL_API zend_result php_pgsql_convert(PGconn *pg_link, const zend_string *
 			err = 1;
 		}
 		if (!err && (Z_TYPE_P(val) == IS_ARRAY || Z_TYPE_P(val) == IS_OBJECT || Z_TYPE_P(val) == IS_RESOURCE)) {
-			zend_type_error("Values must be of type string|int|float|bool|null, %s given", zend_zval_type_name(val));
+			zend_type_error("Values must be of type string|int|float|bool|null, %s given", zend_zval_value_name(val));
 			err = 1;
 		}
 		if (err) {
@@ -5279,7 +5251,7 @@ PHP_PGSQL_API zend_result php_pgsql_insert(PGconn *pg_link, const zend_string *t
 				smart_str_appendl(&querystr, "NULL", sizeof("NULL")-1);
 				break;
 			default:
-				zend_type_error("Value must be of type string|int|float|null, %s given", zend_zval_type_name(val));
+				zend_type_error("Value must be of type string|int|float|null, %s given", zend_zval_value_name(val));
 				goto cleanup;
 		}
 		smart_str_appendc(&querystr, ',');
@@ -5453,7 +5425,7 @@ static inline int build_assignment_string(PGconn *pg_link, smart_str *querystr, 
 				smart_str_appendl(querystr, "NULL", sizeof("NULL")-1);
 				break;
 			default:
-				zend_type_error("Value must be of type string|int|float|null, %s given", zend_zval_type_name(val));
+				zend_type_error("Value must be of type string|int|float|null, %s given", zend_zval_value_name(val));
 				return -1;
 		}
 		smart_str_appendl(querystr, pad, pad_len);

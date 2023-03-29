@@ -28,26 +28,31 @@
 #define ZEND_ENUM_DISALLOW_MAGIC_METHOD(propertyName, methodName) \
 	do { \
 		if (ce->propertyName) { \
-			zend_error_noreturn(E_COMPILE_ERROR, "Enum may not include %s", methodName); \
+			zend_error_noreturn(E_COMPILE_ERROR, "Enum %s cannot include magic method %s", ZSTR_VAL(ce->name), methodName); \
 		} \
 	} while (0);
 
 ZEND_API zend_class_entry *zend_ce_unit_enum;
 ZEND_API zend_class_entry *zend_ce_backed_enum;
-
-static zend_object_handlers enum_handlers;
+ZEND_API zend_object_handlers zend_enum_object_handlers;
 
 zend_object *zend_enum_new(zval *result, zend_class_entry *ce, zend_string *case_name, zval *backing_value_zv)
 {
 	zend_object *zobj = zend_objects_new(ce);
 	ZVAL_OBJ(result, zobj);
 
-	ZVAL_STR_COPY(OBJ_PROP_NUM(zobj, 0), case_name);
-	if (backing_value_zv != NULL) {
-		ZVAL_COPY(OBJ_PROP_NUM(zobj, 1), backing_value_zv);
-	}
+	zval *zname = OBJ_PROP_NUM(zobj, 0);
+	ZVAL_STR_COPY(zname, case_name);
+	/* ZVAL_COPY does not set Z_PROP_FLAG, this needs to be cleared to avoid leaving IS_PROP_REINITABLE set */
+	Z_PROP_FLAG_P(zname) = 0;
 
-	zobj->handlers = &enum_handlers;
+	if (backing_value_zv != NULL) {
+		zval *prop = OBJ_PROP_NUM(zobj, 1);
+
+		ZVAL_COPY(prop, backing_value_zv);
+		/* ZVAL_COPY does not set Z_PROP_FLAG, this needs to be cleared to avoid leaving IS_PROP_REINITABLE set */
+		Z_PROP_FLAG_P(prop) = 0;
+	}
 
 	return zobj;
 }
@@ -67,7 +72,7 @@ static void zend_verify_enum_properties(zend_class_entry *ce)
 			continue;
 		}
 		// FIXME: File/line number for traits?
-		zend_error_noreturn(E_COMPILE_ERROR, "Enum \"%s\" may not include properties",
+		zend_error_noreturn(E_COMPILE_ERROR, "Enum %s cannot include properties",
 			ZSTR_VAL(ce->name));
 	} ZEND_HASH_FOREACH_END();
 }
@@ -88,7 +93,7 @@ static void zend_verify_enum_magic_methods(zend_class_entry *ce)
 	ZEND_ENUM_DISALLOW_MAGIC_METHOD(__serialize, "__serialize");
 	ZEND_ENUM_DISALLOW_MAGIC_METHOD(__unserialize, "__unserialize");
 
-	const char *forbidden_methods[] = {
+	static const char *const forbidden_methods[] = {
 		"__sleep",
 		"__wakeup",
 		"__set_state",
@@ -99,7 +104,7 @@ static void zend_verify_enum_magic_methods(zend_class_entry *ce)
 		const char *forbidden_method = forbidden_methods[i];
 
 		if (zend_hash_str_exists(&ce->function_table, forbidden_method, strlen(forbidden_method))) {
-			zend_error_noreturn(E_COMPILE_ERROR, "Enum may not include magic method %s", forbidden_method);
+			zend_error_noreturn(E_COMPILE_ERROR, "Enum %s cannot include magic method %s", ZSTR_VAL(ce->name), forbidden_method);
 		}
 	}
 }
@@ -108,7 +113,7 @@ static void zend_verify_enum_interfaces(zend_class_entry *ce)
 {
 	if (zend_class_implements_interface(ce, zend_ce_serializable)) {
 		zend_error_noreturn(E_COMPILE_ERROR,
-			"Enums may not implement the Serializable interface");
+			"Enum %s cannot implement the Serializable interface", ZSTR_VAL(ce->name));
 	}
 }
 
@@ -159,9 +164,9 @@ void zend_register_enum_ce(void)
 	zend_ce_backed_enum = register_class_BackedEnum(zend_ce_unit_enum);
 	zend_ce_backed_enum->interface_gets_implemented = zend_implement_backed_enum;
 
-	memcpy(&enum_handlers, &std_object_handlers, sizeof(zend_object_handlers));
-	enum_handlers.clone_obj = NULL;
-	enum_handlers.compare = zend_objects_not_comparable;
+	memcpy(&zend_enum_object_handlers, &std_object_handlers, sizeof(zend_object_handlers));
+	zend_enum_object_handlers.clone_obj = NULL;
+	zend_enum_object_handlers.compare = zend_objects_not_comparable;
 }
 
 void zend_enum_add_interfaces(zend_class_entry *ce)
@@ -178,12 +183,14 @@ void zend_enum_add_interfaces(zend_class_entry *ce)
 	ce->interface_names = erealloc(ce->interface_names, sizeof(zend_class_name) * ce->num_interfaces);
 
 	ce->interface_names[num_interfaces_before].name = zend_string_copy(zend_ce_unit_enum->name);
-	ce->interface_names[num_interfaces_before].lc_name = zend_string_init("unitenum", sizeof("unitenum") - 1, 0);
+	ce->interface_names[num_interfaces_before].lc_name = ZSTR_INIT_LITERAL("unitenum", 0);
 
 	if (ce->enum_backing_type != IS_UNDEF) {
 		ce->interface_names[num_interfaces_before + 1].name = zend_string_copy(zend_ce_backed_enum->name);
-		ce->interface_names[num_interfaces_before + 1].lc_name = zend_string_init("backedenum", sizeof("backedenum") - 1, 0);	
+		ce->interface_names[num_interfaces_before + 1].lc_name = ZSTR_INIT_LITERAL("backedenum", 0);
 	}
+
+	ce->default_object_handlers = &zend_enum_object_handlers;
 }
 
 zend_result zend_enum_build_backed_enum_table(zend_class_entry *ce)
@@ -307,10 +314,10 @@ not_found:
 		}
 
 		if (ce->enum_backing_type == IS_LONG) {
-			zend_value_error(ZEND_LONG_FMT " is not a valid backing value for enum \"%s\"", long_key, ZSTR_VAL(ce->name));
+			zend_value_error(ZEND_LONG_FMT " is not a valid backing value for enum %s", long_key, ZSTR_VAL(ce->name));
 		} else {
 			ZEND_ASSERT(ce->enum_backing_type == IS_STRING);
-			zend_value_error("\"%s\" is not a valid backing value for enum \"%s\"", ZSTR_VAL(string_key), ZSTR_VAL(ce->name));
+			zend_value_error("\"%s\" is not a valid backing value for enum %s", ZSTR_VAL(string_key), ZSTR_VAL(ce->name));
 		}
 		return FAILURE;
 	}
@@ -409,8 +416,11 @@ static void zend_enum_register_func(zend_class_entry *ce, zend_known_string_id n
 	zif->module = EG(current_module);
 	zif->scope = ce;
 	zif->T = ZEND_OBSERVER_ENABLED;
-	ZEND_MAP_PTR_NEW(zif->run_time_cache);
-	ZEND_MAP_PTR_SET(zif->run_time_cache, zend_arena_alloc(&CG(arena), zend_internal_run_time_cache_reserved_size()));
+    if (EG(active)) { // at run-time
+		ZEND_MAP_PTR_INIT(zif->run_time_cache, zend_arena_calloc(&CG(arena), 1, zend_internal_run_time_cache_reserved_size()));
+	} else {
+		ZEND_MAP_PTR_NEW(zif->run_time_cache);
+	}
 
 	if (!zend_hash_add_ptr(&ce->function_table, name, zif)) {
 		zend_error_noreturn(E_COMPILE_ERROR, "Cannot redeclare %s::%s()", ZSTR_VAL(ce->name), ZSTR_VAL(name));
@@ -479,7 +489,7 @@ static const zend_function_entry backed_enum_methods[] = {
 };
 
 ZEND_API zend_class_entry *zend_register_internal_enum(
-	const char *name, zend_uchar type, const zend_function_entry *functions)
+	const char *name, uint8_t type, const zend_function_entry *functions)
 {
 	ZEND_ASSERT(type == IS_UNDEF || type == IS_LONG || type == IS_STRING);
 

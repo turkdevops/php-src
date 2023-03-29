@@ -353,7 +353,11 @@ static bool opline_supports_assign_contraction(
 		return opline->op1_type != IS_CV || opline->op1.var != cv_var;
 	}
 
-	if (opline->opcode == ZEND_ASSIGN_OP
+	if ((opline->opcode == ZEND_ASSIGN_OP
+	  || opline->opcode == ZEND_ASSIGN_OBJ
+	  || opline->opcode == ZEND_ASSIGN_DIM
+	  || opline->opcode == ZEND_ASSIGN_OBJ_OP
+	  || opline->opcode == ZEND_ASSIGN_DIM_OP)
 	 && opline->op1_type == IS_CV
 	 && opline->op1.var == cv_var
 	 && zend_may_throw(opline, &ssa->ops[ssa->vars[src_var].definition], op_array, ssa)) {
@@ -843,7 +847,7 @@ optimize_jmpnz:
 						goto optimize_jmpz;
 					} else if (opline->op1_type == IS_CONST) {
 						if (zend_is_true(CT_CONSTANT_EX(op_array, opline->op1.constant))) {
-							opline->opcode = ZEND_QM_ASSIGN;
+							opline->opcode = ZEND_BOOL;
 							take_successor_1(ssa, block_num, block);
 						}
 					}
@@ -857,7 +861,7 @@ optimize_jmpnz:
 						goto optimize_jmpnz;
 					} else if (opline->op1_type == IS_CONST) {
 						if (!zend_is_true(CT_CONSTANT_EX(op_array, opline->op1.constant))) {
-							opline->opcode = ZEND_QM_ASSIGN;
+							opline->opcode = ZEND_BOOL;
 							take_successor_1(ssa, block_num, block);
 						}
 					}
@@ -928,7 +932,7 @@ optimize_jmpnz:
 				case ZEND_MATCH:
 					if (opline->op1_type == IS_CONST) {
 						zval *zv = CT_CONSTANT_EX(op_array, opline->op1.constant);
-						zend_uchar type = Z_TYPE_P(zv);
+						uint8_t type = Z_TYPE_P(zv);
 						bool correct_type =
 							(opline->opcode == ZEND_SWITCH_LONG && type == IS_LONG)
 							|| (opline->opcode == ZEND_SWITCH_STRING && type == IS_STRING)
@@ -1643,7 +1647,7 @@ void zend_dfa_optimize_op_array(zend_op_array *op_array, zend_optimizer_ctx *ctx
 			 && Z_TYPE_P(CT_CONSTANT_EX(op_array, opline->op2.constant)) == IS_LONG
 			 && Z_LVAL_P(CT_CONSTANT_EX(op_array, opline->op2.constant)) == 1
 			 && ssa->ops[op_1].op1_use >= 0
-			 && !(ssa->var_info[ssa->ops[op_1].op1_use].type & (MAY_BE_FALSE|MAY_BE_TRUE|MAY_BE_STRING|MAY_BE_ARRAY|MAY_BE_OBJECT|MAY_BE_RESOURCE|MAY_BE_REF))) {
+			 && !(ssa->var_info[ssa->ops[op_1].op1_use].type & (MAY_BE_UNDEF|MAY_BE_NULL|MAY_BE_FALSE|MAY_BE_TRUE|MAY_BE_STRING|MAY_BE_ARRAY|MAY_BE_OBJECT|MAY_BE_RESOURCE|MAY_BE_REF))) {
 
 // op_1: ASSIGN_SUB #?.CV [undef,null,int,foat] -> #v.CV, int(1) => PRE_DEC #?.CV ->#v.CV
 

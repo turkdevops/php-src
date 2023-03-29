@@ -71,7 +71,8 @@ const mbfl_encoding mbfl_encoding_2022jp_kddi = {
 	&vtbl_2022jp_kddi_wchar,
 	&vtbl_wchar_2022jp_kddi,
 	mb_iso2022jp_kddi_to_wchar,
-	mb_wchar_to_iso2022jp_kddi
+	mb_wchar_to_iso2022jp_kddi,
+	NULL
 };
 
 const struct mbfl_convert_vtbl vtbl_2022jp_kddi_wchar = {
@@ -313,6 +314,7 @@ static int mbfl_filt_conv_2022jp_mobile_wchar_flush(mbfl_convert_filter *filter)
 	if (filter->status & 0xF) {
 		(*filter->output_function)(MBFL_BAD_INPUT, filter->data);
 	}
+	filter->status = 0;
 
 	if (filter->flush_function) {
 		(*filter->flush_function)(filter->data);
@@ -413,7 +415,7 @@ static int mbfl_filt_conv_wchar_2022jp_mobile(int c, mbfl_convert_filter *filter
 		}
 	}
 
-	if (mbfilter_unicode2sjis_emoji_kddi(c, &s1, filter)) {
+	if (mbfilter_unicode2sjis_emoji_kddi(c, &s1, filter) > 0) {
 		/* A KDDI emoji was detected and stored in s1 */
 		CODE2JIS(c1,c2,s1,s2);
 		s1 -= 0x1600;
@@ -483,6 +485,7 @@ static int mbfl_filt_conv_wchar_2022jp_mobile_flush(mbfl_convert_filter *filter)
 	if ((filter->status & 0xFF) == 1 && (c1 == '#' || (c1 >= '0' && c1 <= '9'))) {
 		(*filter->output_function)(c1, filter->data);
 	}
+	filter->status = filter->cache = 0;
 
 	if (filter->flush_function) {
 		(*filter->flush_function)(filter->data);

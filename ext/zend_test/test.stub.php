@@ -3,8 +3,10 @@
 /**
  * @generate-class-entries static
  * @generate-legacy-arginfo 80000
+ * @undocumentable
  */
 namespace {
+    require "Zend/zend_attributes.stub.php";
 
     /**
      * @var int
@@ -12,7 +14,8 @@ namespace {
      */
     const ZEND_TEST_DEPRECATED = 42;
 
-    require "Zend/zend_attributes.stub.php";
+    /** @var string */
+    const ZEND_CONSTANT_A = "global";
 
     interface _ZendTestInterface
     {
@@ -40,6 +43,8 @@ namespace {
         public function returnsStatic(): static {}
 
         public function returnsThrowable(): Throwable {}
+
+        static public function variadicTest(string|Iterator ...$elements) : static {}
     }
 
     class _ZendTestChildClass extends _ZendTestClass
@@ -66,13 +71,29 @@ namespace {
         public function __construct(string $parameter) {}
     }
 
+    #[Attribute(Attribute::TARGET_PROPERTY)]
+    final class ZendTestPropertyAttribute {
+        public string $parameter;
+
+        public function __construct(string $parameter) {}
+    }
+
     class ZendTestClassWithMethodWithParameterAttribute {
-        final public function no_override(string $parameter): int {}
-        public function override(string $parameter): int {}
+        final public function no_override(
+            #[ZendTestParameterAttribute("value2")]
+            string $parameter
+        ): int {}
+        public function override(
+            #[ZendTestParameterAttribute("value3")]
+            string $parameter
+        ): int {}
     }
 
     class ZendTestChildClassWithMethodWithParameterAttribute extends ZendTestClassWithMethodWithParameterAttribute {
-        public function override(string $parameter): int {}
+        public function override(
+            #[ZendTestParameterAttribute("value4")]
+            string $parameter
+        ): int {}
     }
 
     final class ZendTestForbidDynamicCall {
@@ -98,9 +119,14 @@ namespace {
         case Baz = -1;
     }
 
+    final class DoOperationNoCast {
+        private int $val;
+        public function __construct(int $val) {}
+    }
+
     function zend_test_array_return(): array {}
 
-    function zend_test_nullable_array_return(): ?array {}
+    function zend_test_nullable_array_return(): null|array {}
 
     function zend_test_void_return(): void {}
 
@@ -108,6 +134,15 @@ namespace {
 
     /** @deprecated */
     function zend_test_deprecated(mixed $arg = null): void {}
+
+    /** @alias zend_test_void_return */
+    function zend_test_aliased(): void {}
+
+    /**
+      * @deprecated
+      * @alias zend_test_void_return
+      */
+    function zend_test_deprecated_aliased(): void {}
 
     function zend_create_unterminated_string(string $str): string {}
 
@@ -135,7 +170,10 @@ namespace {
 
     function zend_get_unit_enum(): ZendTestUnitEnum {}
 
-    function zend_test_parameter_with_attribute(string $parameter): int {}
+    function zend_test_parameter_with_attribute(
+        #[ZendTestParameterAttribute("value1")]
+        string $parameter
+    ): int {}
 
     function zend_get_current_func_name(): string {}
 
@@ -143,6 +181,17 @@ namespace {
 
     function zend_test_zend_ini_parse_quantity(string $str): int {}
     function zend_test_zend_ini_parse_uquantity(string $str): int {}
+
+    function zend_test_zend_ini_str(): string {}
+
+#ifdef ZEND_CHECK_STACK_LIMIT
+    function zend_test_zend_call_stack_get(): ?array {}
+    function zend_test_zend_call_stack_use_all(): int {}
+#endif
+
+    function zend_test_is_string_marked_as_valid_utf8(string $string): bool {}
+
+    function zend_get_map_ptr_last(): int {}
 }
 
 namespace ZendTestNS {
@@ -162,15 +211,34 @@ namespace ZendTestNS {
 
 namespace ZendTestNS2 {
 
+    /** @var string */
+    const ZEND_CONSTANT_A = "namespaced";
+
     class Foo {
         public ZendSubNS\Foo $foo;
 
         public function method(): void {}
     }
 
+    function namespaced_func(): bool {}
+
+    /** @deprecated */
+    function namespaced_deprecated_func(): void {}
+
+    /** @alias zend_test_void_return */
+    function namespaced_aliased_func(): void {}
+
+    /**
+     * @deprecated
+     * @alias zend_test_void_return
+     */
+    function namespaced_deprecated_aliased_func(): void {}
 }
 
 namespace ZendTestNS2\ZendSubNS {
+
+    /** @var string */
+    const ZEND_CONSTANT_A = \ZendTestNS2\ZEND_CONSTANT_A;
 
     class Foo {
         public function method(): void {}
@@ -178,4 +246,15 @@ namespace ZendTestNS2\ZendSubNS {
 
     function namespaced_func(): bool {}
 
+    /** @deprecated */
+    function namespaced_deprecated_func(): void {}
+
+    /** @alias zend_test_void_return */
+    function namespaced_aliased_func(): void {}
+
+    /**
+     * @deprecated
+     * @alias zend_test_void_return
+     */
+    function namespaced_deprecated_aliased_func(): void {}
 }

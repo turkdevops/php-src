@@ -55,8 +55,8 @@ PHP_MSHUTDOWN_FUNCTION(dba);
 PHP_MINFO_FUNCTION(dba);
 
 ZEND_BEGIN_MODULE_GLOBALS(dba)
-	char *default_handler;
-	dba_handler *default_hptr;
+	const char *default_handler;
+	const dba_handler *default_hptr;
 ZEND_END_MODULE_GLOBALS(dba)
 
 ZEND_DECLARE_MODULE_GLOBALS(dba)
@@ -159,7 +159,7 @@ static zend_string* php_dba_make_key(HashTable *key)
 
 /* {{{ globals */
 
-static dba_handler handler[] = {
+static const dba_handler handler[] = {
 #ifdef DBA_GDBM
 	DBA_HND(gdbm, DBA_LOCK_EXT) /* Locking done in library if set */
 #endif
@@ -249,7 +249,7 @@ PHPAPI void dba_fetch_resource(dba_info **pinfo, zval **id)
 /* {{{ dba_get_handler
 PHPAPI dba_handler *dba_get_handler(const char* handler_name)
 {
-	dba_handler *hptr;
+	const dba_handler *hptr;
 	for (hptr = handler; hptr->name && strcasecmp(hptr->name, handler_name); hptr++);
 	return hptr;
 }
@@ -293,7 +293,7 @@ static void dba_close_rsrc(zend_resource *rsrc)
 /* }}} */
 
 /* {{{ dba_close_pe_rsrc_deleter */
-int dba_close_pe_rsrc_deleter(zval *el, void *pDba)
+static int dba_close_pe_rsrc_deleter(zval *el, void *pDba)
 {
 	if (Z_RES_P(el)->ptr == pDba) {
 		if (Z_DELREF_P(el) == 0) {
@@ -318,9 +318,9 @@ static void dba_close_pe_rsrc(zend_resource *rsrc)
 /* }}} */
 
 /* {{{ PHP_INI */
-ZEND_INI_MH(OnUpdateDefaultHandler)
+static ZEND_INI_MH(OnUpdateDefaultHandler)
 {
-	dba_handler *hptr;
+	const dba_handler *hptr;
 
 	if (!ZSTR_LEN(new_value)) {
 		DBA_G(default_hptr) = NULL;
@@ -377,7 +377,7 @@ PHP_MSHUTDOWN_FUNCTION(dba)
 /* {{{ PHP_MINFO_FUNCTION */
 PHP_MINFO_FUNCTION(dba)
 {
-	dba_handler *hptr;
+	const dba_handler *hptr;
 	smart_str handlers = {0};
 
 	for(hptr = handler; hptr->name; hptr++) {
@@ -431,7 +431,7 @@ static void php_dba_update(INTERNAL_FUNCTION_PARAMETERS, int mode)
 /* }}} */
 
 /* {{{ php_find_dbm */
-dba_info *php_dba_find(const char* path)
+static dba_info *php_dba_find(const char* path)
 {
 	zend_resource *le;
 	dba_info *info;
@@ -461,11 +461,11 @@ static void php_dba_open(INTERNAL_FUNCTION_PARAMETERS, bool persistent)
 {
 	dba_mode_t modenr;
 	dba_info *info, *other;
-	dba_handler *hptr;
-	char *error = NULL;
+	const dba_handler *hptr;
+	const char *error = NULL;
 	int lock_mode, lock_flag = 0;
-	char *file_mode;
-	char *lock_file_mode = NULL;
+	const char *file_mode;
+	const char *lock_file_mode = NULL;
 	int persistent_flag = persistent ? STREAM_OPEN_PERSISTENT : 0;
 	zend_string *opened_path = NULL;
 	char *lock_name;
@@ -1165,7 +1165,7 @@ PHP_FUNCTION(dba_sync)
 /* {{{ List configured database handlers */
 PHP_FUNCTION(dba_handlers)
 {
-	dba_handler *hptr;
+	const dba_handler *hptr;
 	bool full_info = 0;
 
 	if (zend_parse_parameters(ZEND_NUM_ARGS(), "|b", &full_info) == FAILURE) {

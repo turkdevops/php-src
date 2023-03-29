@@ -121,6 +121,7 @@ static const mbfl_encoding *mbfl_encoding_ptr_list[] = {
 	&mbfl_encoding_utf8_kddi_b,
 	&mbfl_encoding_utf8_sb,
 	&mbfl_encoding_cp932,
+	&mbfl_encoding_sjiswin,
 	&mbfl_encoding_cp51932,
 	&mbfl_encoding_jis,
 	&mbfl_encoding_2022jp,
@@ -211,12 +212,6 @@ const mbfl_encoding *mbfl_no2encoding(enum mbfl_no_encoding no_encoding)
 	return NULL;
 }
 
-enum mbfl_no_encoding mbfl_name2no_encoding(const char *name)
-{
-	const mbfl_encoding *encoding = mbfl_name2encoding(name);
-	return encoding ? encoding->no_encoding : mbfl_no_encoding_invalid;
-}
-
 const char *mbfl_no_encoding2name(enum mbfl_no_encoding no_encoding)
 {
 	const mbfl_encoding *encoding = mbfl_no2encoding(no_encoding);
@@ -226,11 +221,6 @@ const char *mbfl_no_encoding2name(enum mbfl_no_encoding no_encoding)
 const mbfl_encoding **mbfl_get_supported_encodings(void)
 {
 	return mbfl_encoding_ptr_list;
-}
-
-const char *mbfl_no2preferred_mime_name(enum mbfl_no_encoding no_encoding)
-{
-	return mbfl_encoding_preferred_mime_name(mbfl_no2encoding(no_encoding));
 }
 
 const char *mbfl_encoding_preferred_mime_name(const mbfl_encoding *encoding)

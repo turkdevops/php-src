@@ -101,14 +101,25 @@
 #endif
 
 /* Simplify ssl context option retrieval */
-#define GET_VER_OPT(name) \
-	(PHP_STREAM_CONTEXT(stream) && (val = php_stream_context_get_option(PHP_STREAM_CONTEXT(stream), "ssl", name)) != NULL)
-#define GET_VER_OPT_STRING(name, str) \
-	if (GET_VER_OPT(name)) { \
-		if (try_convert_to_string(val)) str = Z_STRVAL_P(val); \
-	}
-#define GET_VER_OPT_LONG(name, num) \
-	if (GET_VER_OPT(name)) { num = zval_get_long(val); }
+#define GET_VER_OPT(_name) \
+	(PHP_STREAM_CONTEXT(stream) && (val = php_stream_context_get_option(PHP_STREAM_CONTEXT(stream), "ssl", _name)) != NULL)
+#define GET_VER_OPT_STRING(_name, _str) \
+	do { \
+		if (GET_VER_OPT(_name)) { \
+			if (try_convert_to_string(val)) _str = Z_STRVAL_P(val); \
+		} \
+	} while (0)
+#define GET_VER_OPT_STRINGL(_name, _str, _len) \
+	do { \
+		if (GET_VER_OPT(_name)) { \
+			if (try_convert_to_string(val)) { \
+				_str = Z_STRVAL_P(val); \
+				_len = Z_STRLEN_P(val); \
+			} \
+		} \
+	} while (0)
+#define GET_VER_OPT_LONG(_name, _num) \
+	if (GET_VER_OPT(_name)) _num = zval_get_long(val)
 
 /* Used for peer verification in windows */
 #define PHP_X509_NAME_ENTRY_TO_UTF8(ne, i, out) \
@@ -502,7 +513,7 @@ static bool php_openssl_matches_common_name(X509 *peer, const char *subject_name
 }
 /* }}} */
 
-static int php_openssl_apply_peer_verification_policy(SSL *ssl, X509 *peer, php_stream *stream) /* {{{ */
+static zend_result php_openssl_apply_peer_verification_policy(SSL *ssl, X509 *peer, php_stream *stream) /* {{{ */
 {
 	zval *val = NULL;
 	zval *peer_fingerprint;
@@ -829,7 +840,7 @@ static long php_openssl_load_stream_cafile(X509_STORE *cert_store, const char *c
 }
 /* }}} */
 
-static int php_openssl_enable_peer_verification(SSL_CTX *ctx, php_stream *stream) /* {{{ */
+static zend_result php_openssl_enable_peer_verification(SSL_CTX *ctx, php_stream *stream) /* {{{ */
 {
 	zval *val = NULL;
 	char *cafile = NULL;
@@ -889,18 +900,22 @@ static void php_openssl_disable_peer_verification(SSL_CTX *ctx, php_stream *stre
 }
 /* }}} */
 
-static int php_openssl_set_local_cert(SSL_CTX *ctx, php_stream *stream) /* {{{ */
+static zend_result php_openssl_set_local_cert(SSL_CTX *ctx, php_stream *stream) /* {{{ */
 {
 	zval *val = NULL;
 	char *certfile = NULL;
+	size_t certfile_len;
 
-	GET_VER_OPT_STRING("local_cert", certfile);
+	GET_VER_OPT_STRINGL("local_cert", certfile, certfile_len);
 
 	if (certfile) {
 		char resolved_path_buff[MAXPATHLEN];
 		const char *private_key = NULL;
+		size_t private_key_len;
 
-		if (!VCWD_REALPATH(certfile, resolved_path_buff)) {
+		if (!php_openssl_check_path_ex(
+				certfile, certfile_len, resolved_path_buff, 0, false, false,
+				"local_cert in ssl stream context")) {
 			php_error_docref(NULL, E_WARNING, "Unable to get real path of certificate file `%s'", certfile);
 			return FAILURE;
 		}
@@ -913,8 +928,10 @@ static int php_openssl_set_local_cert(SSL_CTX *ctx, php_stream *stream) /* {{{ *
 			return FAILURE;
 		}
 
-		GET_VER_OPT_STRING("local_pk", private_key);
-		if (private_key && !VCWD_REALPATH(private_key, resolved_path_buff)) {
+		GET_VER_OPT_STRINGL("local_pk", private_key, private_key_len);
+		if (private_key && !php_openssl_check_path_ex(
+				private_key, private_key_len, resolved_path_buff, 0, false, false,
+				"local_pk in ssl stream context")) {
 			php_error_docref(NULL, E_WARNING, "Unable to get real path of private key file `%s'", private_key);
 			return FAILURE;
 		}
@@ -1187,7 +1204,7 @@ static RSA *php_openssl_tmp_rsa_cb(SSL *s, int is_export, int keylength)
 }
 #endif
 
-static int php_openssl_set_server_dh_param(php_stream * stream, SSL_CTX *ctx) /* {{{ */
+static zend_result php_openssl_set_server_dh_param(php_stream * stream, SSL_CTX *ctx) /* {{{ */
 {
 	zval *zdhpath = php_stream_context_get_option(PHP_STREAM_CONTEXT(stream), "ssl", "dh_param");
 	if (zdhpath == NULL) {
@@ -1220,7 +1237,7 @@ static int php_openssl_set_server_dh_param(php_stream * stream, SSL_CTX *ctx) /*
 		return FAILURE;
 	}
 
-	if (SSL_CTX_set0_tmp_dh_pkey(ctx, pkey) < 0) {
+	if (SSL_CTX_set0_tmp_dh_pkey(ctx, pkey) == 0) {
 		php_error_docref(NULL, E_WARNING, "Failed assigning DH params");
 		EVP_PKEY_free(pkey);
 		return FAILURE;
@@ -1234,7 +1251,7 @@ static int php_openssl_set_server_dh_param(php_stream * stream, SSL_CTX *ctx) /*
 		return FAILURE;
 	}
 
-	if (SSL_CTX_set_tmp_dh(ctx, dh) < 0) {
+	if (SSL_CTX_set_tmp_dh(ctx, dh) == 0) {
 		php_error_docref(NULL, E_WARNING, "Failed assigning DH params");
 		DH_free(dh);
 		return FAILURE;
@@ -1248,7 +1265,7 @@ static int php_openssl_set_server_dh_param(php_stream * stream, SSL_CTX *ctx) /*
 /* }}} */
 
 #if defined(HAVE_ECDH) && PHP_OPENSSL_API_VERSION < 0x10100
-static int php_openssl_set_server_ecdh_curve(php_stream *stream, SSL_CTX *ctx) /* {{{ */
+static zend_result php_openssl_set_server_ecdh_curve(php_stream *stream, SSL_CTX *ctx) /* {{{ */
 {
 	zval *zvcurve;
 	int curve_nid;
@@ -1284,7 +1301,7 @@ static int php_openssl_set_server_ecdh_curve(php_stream *stream, SSL_CTX *ctx) /
 /* }}} */
 #endif
 
-static int php_openssl_set_server_specific_opts(php_stream *stream, SSL_CTX *ctx) /* {{{ */
+static zend_result php_openssl_set_server_specific_opts(php_stream *stream, SSL_CTX *ctx) /* {{{ */
 {
 	zval *zv;
 	long ssl_ctx_options = SSL_CTX_get_options(ctx);
@@ -1303,7 +1320,10 @@ static int php_openssl_set_server_specific_opts(php_stream *stream, SSL_CTX *ctx
 		php_error_docref(NULL, E_WARNING, "rsa_key_size context option has been removed");
 	}
 
-	php_openssl_set_server_dh_param(stream, ctx);
+	if (php_openssl_set_server_dh_param(stream, ctx) == FAILURE) {
+		return FAILURE;
+	}
+
 	zv = php_stream_context_get_option(PHP_STREAM_CONTEXT(stream), "ssl", "single_dh_use");
 	if (zv == NULL || zend_is_true(zv)) {
 		ssl_ctx_options |= SSL_OP_SINGLE_DH_USE;
@@ -1380,7 +1400,7 @@ static SSL_CTX *php_openssl_create_sni_server_ctx(char *cert_path, char *key_pat
 }
 /* }}} */
 
-static int php_openssl_enable_server_sni(php_stream *stream, php_openssl_netstream_data_t *sslsock)  /* {{{ */
+static zend_result php_openssl_enable_server_sni(php_stream *stream, php_openssl_netstream_data_t *sslsock)  /* {{{ */
 {
 	zval *val;
 	zval *current;
@@ -1447,9 +1467,11 @@ static int php_openssl_enable_server_sni(php_stream *stream, php_openssl_netstre
 			if (UNEXPECTED(!local_cert_str)) {
 				return FAILURE;
 			}
-			if (!VCWD_REALPATH(ZSTR_VAL(local_cert_str), resolved_cert_path_buff)) {
+			if (!php_openssl_check_path_str_ex(
+					local_cert_str, resolved_cert_path_buff, 0, false, false,
+					"SNI_server_certs local_cert in ssl stream context")) {
 				php_error_docref(NULL, E_WARNING,
-					"Failed setting local cert chain file `%s'; file not found",
+					"Failed setting local cert chain file `%s'; could not open file",
 					ZSTR_VAL(local_cert_str)
 				);
 				zend_string_release(local_cert_str);
@@ -1469,9 +1491,11 @@ static int php_openssl_enable_server_sni(php_stream *stream, php_openssl_netstre
 			if (UNEXPECTED(!local_pk_str)) {
 				return FAILURE;
 			}
-			if (!VCWD_REALPATH(ZSTR_VAL(local_pk_str), resolved_pk_path_buff)) {
+			if (!php_openssl_check_path_str_ex(
+					local_pk_str, resolved_pk_path_buff, 0, false, false,
+					"SNI_server_certs local_pk in ssl stream context")) {
 				php_error_docref(NULL, E_WARNING,
-					"Failed setting local private key file `%s'; file not found",
+					"Failed setting local private key file `%s';  could not open file",
 					ZSTR_VAL(local_pk_str)
 				);
 				zend_string_release(local_pk_str);
@@ -1481,7 +1505,9 @@ static int php_openssl_enable_server_sni(php_stream *stream, php_openssl_netstre
 
 			ctx = php_openssl_create_sni_server_ctx(resolved_cert_path_buff, resolved_pk_path_buff);
 
-		} else if (VCWD_REALPATH(Z_STRVAL_P(current), resolved_path_buff)) {
+		} else if (php_openssl_check_path_str_ex(
+				Z_STR_P(current), resolved_path_buff, 0, false, false,
+				"SNI_server_certs in ssl stream context")) {
 			ctx = php_openssl_create_sni_server_ctx(resolved_path_buff, resolved_path_buff);
 		} else {
 			php_error_docref(NULL, E_WARNING,
@@ -1585,7 +1611,7 @@ static int php_openssl_server_alpn_callback(SSL *ssl_handle,
 
 #endif
 
-int php_openssl_setup_crypto(php_stream *stream,
+zend_result php_openssl_setup_crypto(php_stream *stream,
 		php_openssl_netstream_data_t *sslsock,
 		php_stream_xport_crypto_param *cparam) /* {{{ */
 {

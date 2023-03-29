@@ -29,6 +29,7 @@
 #include "zend_enum.h"
 #include "zend_attributes.h"
 #include "zend_constants.h"
+#include "zend_observer.h"
 
 ZEND_API zend_class_entry* (*zend_inheritance_cache_get)(zend_class_entry *ce, zend_class_entry *parent, zend_class_entry **traits_and_interfaces) = NULL;
 ZEND_API zend_class_entry* (*zend_inheritance_cache_add)(zend_class_entry *ce, zend_class_entry *proto, zend_class_entry *parent, zend_class_entry **traits_and_interfaces, HashTable *dependencies) = NULL;
@@ -1384,6 +1385,7 @@ static void do_inherit_class_constant(zend_string *name, zend_class_constant *pa
 				c = zend_arena_alloc(&CG(arena), sizeof(zend_class_constant));
 				memcpy(c, parent_const, sizeof(zend_class_constant));
 				parent_const = c;
+				Z_CONSTANT_FLAGS(c->value) |= CONST_OWNED;
 			}
 		}
 		if (ce->type & ZEND_INTERNAL_CLASS) {
@@ -1471,6 +1473,7 @@ ZEND_API void zend_do_inheritance_ex(zend_class_entry *ce, zend_class_entry *par
 		zend_string_release_ex(ce->parent_name, 0);
 	}
 	ce->parent = parent_ce;
+	ce->default_object_handlers = parent_ce->default_object_handlers;
 	ce->ce_flags |= ZEND_ACC_RESOLVED_PARENT;
 
 	/* Inherit properties */
@@ -1626,7 +1629,7 @@ ZEND_API void zend_do_inheritance_ex(zend_class_entry *ce, zend_class_entry *par
 			ce->ce_flags |= ZEND_ACC_EXPLICIT_ABSTRACT_CLASS;
 		}
 	}
-	ce->ce_flags |= parent_ce->ce_flags & (ZEND_HAS_STATIC_IN_METHODS | ZEND_ACC_HAS_TYPE_HINTS | ZEND_ACC_USE_GUARDS | ZEND_ACC_NOT_SERIALIZABLE | ZEND_ACC_ALLOW_DYNAMIC_PROPERTIES);
+	ce->ce_flags |= parent_ce->ce_flags & (ZEND_HAS_STATIC_IN_METHODS | ZEND_ACC_HAS_TYPE_HINTS | ZEND_ACC_HAS_READONLY_PROPS | ZEND_ACC_USE_GUARDS | ZEND_ACC_NOT_SERIALIZABLE | ZEND_ACC_ALLOW_DYNAMIC_PROPERTIES);
 }
 /* }}} */
 
@@ -2368,7 +2371,7 @@ static void zend_do_traits_property_binding(zend_class_entry *ce, zend_class_ent
 
 					if (!is_compatible) {
 						zend_error_noreturn(E_COMPILE_ERROR,
-							   "%s and %s define the same property ($%s) in the composition of %s. However, the definition differs and is considered incompatible. Class was composed",
+								"%s and %s define the same property ($%s) in the composition of %s. However, the definition differs and is considered incompatible. Class was composed",
 								ZSTR_VAL(find_first_property_definition(ce, traits, i, prop_name, colliding_prop->ce)->name),
 								ZSTR_VAL(property_info->ce->name),
 								ZSTR_VAL(prop_name),
@@ -2376,6 +2379,15 @@ static void zend_do_traits_property_binding(zend_class_entry *ce, zend_class_ent
 					}
 					continue;
 				}
+			}
+
+			if ((ce->ce_flags & ZEND_ACC_READONLY_CLASS) && !(property_info->flags & ZEND_ACC_READONLY)) {
+				zend_error_noreturn(E_COMPILE_ERROR,
+					"Readonly class %s cannot use trait with a non-readonly property %s::$%s",
+					ZSTR_VAL(ce->name),
+					ZSTR_VAL(property_info->ce->name),
+					ZSTR_VAL(prop_name)
+				);
 			}
 
 			/* property not found, so lets add it */
@@ -2670,7 +2682,7 @@ static void check_unrecoverable_load_failure(zend_class_entry *ce) {
 	 * a dependence on the inheritance hierarchy of this specific class. Instead we fall back to
 	 * a fatal error, as would happen if we did not allow exceptions in the first place. */
 	if (CG(unlinked_uses)
-			&& zend_hash_index_del(CG(unlinked_uses), (zend_long)(zend_uintptr_t)ce) == SUCCESS) {
+			&& zend_hash_index_del(CG(unlinked_uses), (zend_long)(uintptr_t)ce) == SUCCESS) {
 		zend_exception_uncaught_error(
 			"During inheritance of %s with variance dependencies", ZSTR_VAL(ce->name));
 	}
@@ -2945,7 +2957,7 @@ ZEND_API zend_class_entry *zend_do_link_class(zend_class_entry *ce, zend_string 
 		}
 
 		if (CG(unlinked_uses)) {
-			zend_hash_index_del(CG(unlinked_uses), (zend_long)(zend_uintptr_t) ce);
+			zend_hash_index_del(CG(unlinked_uses), (zend_long)(uintptr_t) ce);
 		}
 
 		orig_linking_class = CG(current_linking_class);
@@ -2993,7 +3005,7 @@ ZEND_API zend_class_entry *zend_do_link_class(zend_class_entry *ce, zend_string 
 		}
 
 		/* Normally Stringable is added during compilation. However, if it is imported from a trait,
-		 * we need to explicilty add the interface here. */
+		 * we need to explicitly add the interface here. */
 		if (ce->__tostring && !(ce->ce_flags & ZEND_ACC_TRAIT)
 			&& !zend_class_implements_interface(ce, zend_ce_stringable)) {
 			ZEND_ASSERT(ce->__tostring->common.fn_flags & ZEND_ACC_TRAIT_CLONE);
@@ -3136,7 +3148,10 @@ static zend_always_inline bool register_early_bound_ce(zval *delayed_early_bindi
 		zend_error_noreturn(E_COMPILE_ERROR, "Cannot declare %s %s, because the name is already in use", zend_get_object_type(ce), ZSTR_VAL(ce->name));
 		return false;
 	}
-	return zend_hash_add_ptr(CG(class_table), lcname, ce) != NULL;
+	if (zend_hash_add_ptr(CG(class_table), lcname, ce) != NULL) {
+		return true;
+	}
+	return false;
 }
 
 ZEND_API zend_class_entry *zend_try_early_bind(zend_class_entry *ce, zend_class_entry *parent_ce, zend_string *lcname, zval *delayed_early_binding) /* {{{ */
@@ -3154,6 +3169,7 @@ ZEND_API zend_class_entry *zend_try_early_bind(zend_class_entry *ce, zend_class_
 				if (UNEXPECTED(!register_early_bound_ce(delayed_early_binding, lcname, ret))) {
 					return NULL;
 				}
+				zend_observer_class_linked_notify(ret, lcname);
 				return ret;
 			}
 		} else {
@@ -3228,6 +3244,7 @@ ZEND_API zend_class_entry *zend_try_early_bind(zend_class_entry *ce, zend_class_
 		if (ZSTR_HAS_CE_CACHE(ce->name)) {
 			ZSTR_SET_CE_CACHE(ce->name, ce);
 		}
+		zend_observer_class_linked_notify(ce, lcname);
 
 		return ce;
 	}

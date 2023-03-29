@@ -63,7 +63,8 @@ const mbfl_encoding mbfl_encoding_utf8_docomo = {
 	&vtbl_utf8_docomo_wchar,
 	&vtbl_wchar_utf8_docomo,
 	mb_utf8_docomo_to_wchar,
-	mb_wchar_to_utf8_docomo
+	mb_wchar_to_utf8_docomo,
+	NULL
 };
 
 const mbfl_encoding mbfl_encoding_utf8_kddi_a = {
@@ -76,7 +77,8 @@ const mbfl_encoding mbfl_encoding_utf8_kddi_a = {
 	&vtbl_utf8_kddi_a_wchar,
 	&vtbl_wchar_utf8_kddi_a,
 	mb_utf8_kddi_a_to_wchar,
-	mb_wchar_to_utf8_kddi_a
+	mb_wchar_to_utf8_kddi_a,
+	NULL
 };
 
 const mbfl_encoding mbfl_encoding_utf8_kddi_b = {
@@ -89,7 +91,8 @@ const mbfl_encoding mbfl_encoding_utf8_kddi_b = {
 	&vtbl_utf8_kddi_b_wchar,
 	&vtbl_wchar_utf8_kddi_b,
 	mb_utf8_kddi_b_to_wchar,
-	mb_wchar_to_utf8_kddi_b
+	mb_wchar_to_utf8_kddi_b,
+	NULL
 };
 
 const mbfl_encoding mbfl_encoding_utf8_sb = {
@@ -102,7 +105,8 @@ const mbfl_encoding mbfl_encoding_utf8_sb = {
 	&vtbl_utf8_sb_wchar,
 	&vtbl_wchar_utf8_sb,
 	mb_utf8_sb_to_wchar,
-	mb_wchar_to_utf8_sb
+	mb_wchar_to_utf8_sb,
+	NULL
 };
 
 const struct mbfl_convert_vtbl vtbl_utf8_docomo_wchar = {
@@ -362,8 +366,11 @@ static size_t mb_mobile_utf8_to_wchar(unsigned char **in, size_t *in_len, uint32
 		} else if (c >= 0xE0 && c <= 0xEF) {
 			if ((e - p) < 2) {
 				*out++ = MBFL_BAD_INPUT;
-				while (p < e && (*p & 0xC0) == 0x80) {
+				if (p < e && (c != 0xE0 || *p >= 0xA0) && (c != 0xED || *p < 0xA0) && (*p & 0xC0) == 0x80) {
 					p++;
+					if (p < e && (*p & 0xC0) == 0x80) {
+						p++;
+					}
 				}
 				continue;
 			}
@@ -386,7 +393,7 @@ static size_t mb_mobile_utf8_to_wchar(unsigned char **in, size_t *in_len, uint32
 				*out++ = MBFL_BAD_INPUT;
 				if (p < e) {
 					unsigned char c2 = *p;
-					if ((c == 0xF0 && c2 >= 0x90) || (c == 0xF4 && c2 < 0x90)) {
+					if ((c == 0xF0 && c2 >= 0x90) || (c == 0xF4 && c2 < 0x90) || (c >= 0xF1 && c <= 0xF3)) {
 						while (p < e && (*p & 0xC0) == 0x80) {
 							p++;
 						}

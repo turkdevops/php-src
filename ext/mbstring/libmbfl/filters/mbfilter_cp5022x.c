@@ -61,7 +61,8 @@ const mbfl_encoding mbfl_encoding_cp50220 = {
 	&vtbl_cp50220_wchar,
 	&vtbl_wchar_cp50220,
 	mb_cp5022x_to_wchar,
-	mb_wchar_to_cp50220
+	mb_wchar_to_cp50220,
+	NULL
 };
 
 const mbfl_encoding mbfl_encoding_cp50221 = {
@@ -74,7 +75,8 @@ const mbfl_encoding mbfl_encoding_cp50221 = {
 	&vtbl_cp50221_wchar,
 	&vtbl_wchar_cp50221,
 	mb_cp5022x_to_wchar,
-	mb_wchar_to_cp50221
+	mb_wchar_to_cp50221,
+	NULL
 };
 
 const mbfl_encoding mbfl_encoding_cp50222 = {
@@ -87,7 +89,8 @@ const mbfl_encoding mbfl_encoding_cp50222 = {
 	&vtbl_cp50222_wchar,
 	&vtbl_wchar_cp50222,
 	mb_cp5022x_to_wchar,
-	mb_wchar_to_cp50222
+	mb_wchar_to_cp50222,
+	NULL
 };
 
 const struct mbfl_convert_vtbl vtbl_cp50220_wchar = {
@@ -322,6 +325,7 @@ static int mbfl_filt_conv_cp5022x_wchar_flush(mbfl_convert_filter *filter)
 		 * escape sequence was truncated */
 		CK((*filter->output_function)(MBFL_BAD_INPUT, filter->data));
 	}
+	filter->status = 0;
 
 	if (filter->flush_function) {
 		(*filter->flush_function)(filter->data);
@@ -555,7 +559,9 @@ static int mbfl_filt_conv_wchar_cp50220_flush(mbfl_convert_filter *filter)
 
 	if (filter->cache) {
 		int s = mb_convert_kana_codepoint(filter->cache, 0, NULL, NULL, mode);
+		filter->filter_function = mbfl_filt_conv_wchar_cp50221;
 		mbfl_filt_conv_wchar_cp50221(s, filter);
+		filter->filter_function = mbfl_filt_conv_wchar_cp50220;
 		filter->cache = 0;
 	}
 
@@ -822,7 +828,7 @@ static int mbfl_filt_conv_wchar_cp50222_flush(mbfl_convert_filter *filter)
 		CK((*filter->output_function)(0x28, filter->data));		/* '(' */
 		CK((*filter->output_function)(0x42, filter->data));		/* 'B' */
 	}
-	filter->status &= 0xff;
+	filter->status = 0;
 
 	if (filter->flush_function) {
 		(*filter->flush_function)(filter->data);
@@ -1041,7 +1047,6 @@ static void mb_wchar_to_cp50220(uint32_t *in, size_t len, mb_convert_buf *buf, b
 	MB_CONVERT_BUF_LOAD(buf, out, limit);
 	MB_CONVERT_BUF_ENSURE(buf, out, limit, len);
 
-	bool consumed = false;
 	uint32_t w;
 
 	if (buf->state & 0xFFFF00) {
@@ -1060,10 +1065,10 @@ reprocess_codepoint:
 			 * but the 'next one' will come in a separate buffer */
 			buf->state |= w << 8;
 			break;
-		} else {
-			w = mb_convert_kana_codepoint(w, len ? *in : 0, &consumed, NULL, MBFL_HAN2ZEN_KATAKANA | MBFL_HAN2ZEN_GLUE);
 		}
 
+		bool consumed = false;
+		w = mb_convert_kana_codepoint(w, len ? *in : 0, &consumed, NULL, MBFL_HAN2ZEN_KATAKANA | MBFL_HAN2ZEN_GLUE);
 		if (consumed) {
 			/* Two successive codepoints were converted into one */
 			in++; len--; consumed = false;

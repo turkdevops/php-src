@@ -24,8 +24,14 @@
 /*
  * The source code included in this files was separated from mbfilter_sjis.c
  * by rui hirokawa <hirokawa@php.net> on 15 aug 2011.
- *
  */
+
+/* Although the specification for Shift-JIS-2004 indicates that 0x5C and
+ * 0x7E should (respectively) represent a Yen sign and an overbar, feedback
+ * from Japanese PHP users indicates that they prefer 0x5C and 0x7E to be
+ * treated as equivalent to U+005C and U+007E. This is the historical
+ * behavior of mbstring, and promotes compatibility with other software
+ * which handles Shift-JIS and Shift-JIS-2004 text in this way. */
 
 #include "mbfilter.h"
 #include "mbfilter_sjis_2004.h"
@@ -35,7 +41,7 @@
 #include "unicode_table_jis2004.h"
 #include "unicode_table_jis.h"
 
-extern const unsigned char mblen_table_sjis[];
+extern const unsigned char mblen_table_sjis_mobile[];
 extern const unsigned char mblen_table_eucjp[];
 
 static size_t mb_sjis2004_to_wchar(unsigned char **in, size_t *in_len, uint32_t *buf, size_t bufsize, unsigned int *state);
@@ -56,12 +62,13 @@ const mbfl_encoding mbfl_encoding_sjis2004 = {
 	"SJIS-2004",
 	"Shift_JIS",
 	mbfl_encoding_sjis2004_aliases,
-	mblen_table_sjis,
+	mblen_table_sjis_mobile, /* Leading byte values used for SJIS-2004 are the same as mobile SJIS variants */
 	MBFL_ENCTYPE_GL_UNSAFE,
 	&vtbl_sjis2004_wchar,
 	&vtbl_wchar_sjis2004,
 	mb_sjis2004_to_wchar,
-	mb_wchar_to_sjis2004
+	mb_wchar_to_sjis2004,
+	NULL
 };
 
 const struct mbfl_convert_vtbl vtbl_sjis2004_wchar = {
@@ -94,7 +101,8 @@ const mbfl_encoding mbfl_encoding_eucjp2004 = {
 	&vtbl_eucjp2004_wchar,
 	&vtbl_wchar_eucjp2004,
 	mb_eucjp2004_to_wchar,
-	mb_wchar_to_eucjp2004
+	mb_wchar_to_eucjp2004,
+	NULL
 };
 
 const struct mbfl_convert_vtbl vtbl_eucjp2004_wchar = {
@@ -127,7 +135,8 @@ const mbfl_encoding mbfl_encoding_2022jp_2004 = {
 	&vtbl_2022jp_2004_wchar,
 	&vtbl_wchar_2022jp_2004,
 	mb_iso2022jp2004_to_wchar,
-	mb_wchar_to_iso2022jp2004
+	mb_wchar_to_iso2022jp2004,
+	NULL
 };
 
 const struct mbfl_convert_vtbl vtbl_2022jp_2004_wchar = {
@@ -491,6 +500,7 @@ int mbfl_filt_conv_jis2004_wchar_flush(mbfl_convert_filter *filter)
 	if (filter->status & 0xF) {
 		CK((*filter->output_function)(MBFL_BAD_INPUT, filter->data));
 	}
+	filter->status = 0;
 
 	if (filter->flush_function) {
 		return (*filter->flush_function)(filter->data);
@@ -564,13 +574,6 @@ retry:
 		}
 	}
 
-	if (s1 <= 0 && (filter->to->no_encoding == mbfl_no_encoding_2022jp_2004 || filter->to->no_encoding == mbfl_no_encoding_eucjp2004) && (c == 0x5C || c == 0x7E)) {
-		/* ISO-2022-JP-2004 can represent ASCII characters directly, so there is no need
-		 * to use the JIS X 0208 REVERSE SOLIDUS for ASCII backslash, or WAVE DASH for tilde
-		 * Likewise for EUC-JP-2004 */
-		s1 = c;
-	}
-
 	/* check for major japanese chars: U+4E00 - U+9FFF */
 	if (s1 <= 0) {
 		for (k = 0; k < uni2jis_tbl_len; k++) {
@@ -632,6 +635,8 @@ retry:
 		} else if (s1 < 0x100) { /* latin or kana */
 			if (filter->to->no_encoding == mbfl_no_encoding_eucjp2004) {
 				CK((*filter->output_function)(0x8e, filter->data));
+				CK((*filter->output_function)(s1, filter->data));
+			} else if (filter->to->no_encoding == mbfl_no_encoding_sjis2004 && (s1 >= 0xA1 && s1 <= 0xDF)) {
 				CK((*filter->output_function)(s1, filter->data));
 			} else {
 				CK(mbfl_filt_conv_illegal_output(c, filter));
@@ -1074,12 +1079,6 @@ process_codepoint: ;
 			}
 		}
 
-		if (!s && (w == 0x5C || w == 0x7E)) {
-			/* EUC-JP-2004 can represent ASCII characters directly, so there is no need
-			 * to use the JIS X 0208 REVERSE SOLIDUS for ASCII backslash, or WAVE DASH for tilde */
-			s = w;
-		}
-
 		/* Check for major Japanese chars: U+4E00-U+9FFF */
 		if (!s) {
 			for (int k = 0; k < uni2jis_tbl_len; k++) {
@@ -1331,12 +1330,6 @@ process_codepoint: ;
 					break;
 				}
 			}
-		}
-
-		if (!s && (w == 0x5C || w == 0x7E)) {
-			/* ISO-2022-JP-2004 can represent ASCII characters directly, so there is no need
-			 * to use the JIS X 0208 REVERSE SOLIDUS for ASCII backslash, or WAVE DASH for tilde */
-			s = w;
 		}
 
 		/* Check for major Japanese chars: U+4E00-U+9FFF */

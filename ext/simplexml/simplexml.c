@@ -496,7 +496,7 @@ long_dim:
 				if (member == &tmp_zv) {
 					zval_ptr_dtor_str(&tmp_zv);
 				}
-				zend_type_error("It's not possible to assign a complex type to %s, %s given", attribs ? "attributes" : "properties", zend_zval_type_name(value));
+				zend_type_error("It's not possible to assign a complex type to %s, %s given", attribs ? "attributes" : "properties", zend_zval_value_name(value));
 				return &EG(error_zval);
 		}
 	}
@@ -2222,7 +2222,6 @@ static php_sxe_object* php_sxe_object_new(zend_class_entry *ce, zend_function *f
 
 	zend_object_std_init(&intern->zo, ce);
 	object_properties_init(&intern->zo, ce);
-	intern->zo.handlers = &sxe_object_handlers;
 
 	return intern;
 }
@@ -2606,7 +2605,7 @@ PHP_FUNCTION(simplexml_import_dom)
 	nodep = php_libxml_import_node(node);
 
 	if (!nodep) {
-		zend_argument_type_error(1, "must be of type SimpleXMLElement|DOMNode, %s given", zend_zval_type_name(node));
+		zend_argument_type_error(1, "must be of type SimpleXMLElement|DOMNode, %s given", zend_zval_value_name(node));
 		RETURN_THROWS();
 	}
 
@@ -2673,6 +2672,7 @@ PHP_MINIT_FUNCTION(simplexml)
 {
 	sxe_class_entry = register_class_SimpleXMLElement(zend_ce_stringable, zend_ce_countable, spl_ce_RecursiveIterator);
 	sxe_class_entry->create_object = sxe_object_new;
+	sxe_class_entry->default_object_handlers = &sxe_object_handlers;
 	sxe_class_entry->get_iterator = php_sxe_get_iterator;
 
 	memcpy(&sxe_object_handlers, &std_object_handlers, sizeof(zend_object_handlers));

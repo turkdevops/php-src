@@ -68,7 +68,8 @@ const mbfl_encoding mbfl_encoding_euc_jp = {
 	&vtbl_eucjp_wchar,
 	&vtbl_wchar_eucjp,
 	mb_eucjp_to_wchar,
-	mb_wchar_to_eucjp
+	mb_wchar_to_eucjp,
+	NULL
 };
 
 const struct mbfl_convert_vtbl vtbl_eucjp_wchar = {
@@ -180,6 +181,7 @@ static int mbfl_filt_conv_eucjp_wchar_flush(mbfl_convert_filter *filter)
 {
 	if (filter->status) {
 		(*filter->output_function)(MBFL_BAD_INPUT, filter->data);
+		filter->status = 0;
 	}
 
 	if (filter->flush_function) {

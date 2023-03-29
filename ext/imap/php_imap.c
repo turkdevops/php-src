@@ -207,7 +207,7 @@ static void imap_object_destroy(zend_object *zobj) {
 
 #define GET_IMAP_STREAM(imap_conn_struct, zval_imap_obj) \
 	imap_conn_struct = imap_object_from_zend_object(Z_OBJ_P(zval_imap_obj)); \
-	if (!imap_conn_struct) { \
+	if (imap_conn_struct->imap_stream == NULL) { \
 		zend_throw_exception(zend_ce_value_error, "IMAP\\Connection is already closed", 0); \
 		RETURN_THROWS(); \
 	}
@@ -525,11 +525,9 @@ PHP_RINIT_FUNCTION(imap)
 }
 /* }}} */
 
-/* {{{ PHP_RSHUTDOWN_FUNCTION */
-PHP_RSHUTDOWN_FUNCTION(imap)
+static void free_errorlist(void)
 {
 	ERRORLIST *ecur = NIL;
-	STRINGLIST *acur = NIL;
 
 	if (IMAPG(imap_errorstack) != NIL) {
 		/* output any remaining errors at their original error level */
@@ -545,6 +543,11 @@ PHP_RSHUTDOWN_FUNCTION(imap)
 		mail_free_errorlist(&IMAPG(imap_errorstack));
 		IMAPG(imap_errorstack) = NIL;
 	}
+}
+
+static void free_stringlist(void)
+{
+	STRINGLIST *acur = NIL;
 
 	if (IMAPG(imap_alertstack) != NIL) {
 		/* output any remaining alerts at E_NOTICE level */
@@ -560,6 +563,13 @@ PHP_RSHUTDOWN_FUNCTION(imap)
 		mail_free_stringlist(&IMAPG(imap_alertstack));
 		IMAPG(imap_alertstack) = NIL;
 	}
+}
+
+/* {{{ PHP_RSHUTDOWN_FUNCTION */
+PHP_RSHUTDOWN_FUNCTION(imap)
+{
+	free_errorlist();
+	free_stringlist();
 	return SUCCESS;
 }
 /* }}} */
@@ -781,6 +791,24 @@ PHP_FUNCTION(imap_reopen)
 }
 /* }}} */
 
+PHP_FUNCTION(imap_is_open)
+{
+	zval *imap_conn_obj;
+	php_imap_object *imap_conn_struct;
+
+	if (zend_parse_parameters(ZEND_NUM_ARGS(), "O", &imap_conn_obj, php_imap_ce) == FAILURE) {
+		RETURN_THROWS();
+	}
+
+	/* Manual reimplementation of the GET_IMAP_STREAM() macro that doesn't throw */
+	imap_conn_struct = imap_object_from_zend_object(Z_OBJ_P(imap_conn_obj));
+	/* Stream was closed */
+	if (imap_conn_struct->imap_stream == NULL) {
+		RETURN_FALSE;
+	}
+	RETURN_TRUE;
+}
+
 /* {{{ Append a new message to a specified mailbox */
 PHP_FUNCTION(imap_append)
 {
@@ -794,7 +822,7 @@ PHP_FUNCTION(imap_append)
 	}
 
 	if (internal_date) {
-		zend_string *regex  = zend_string_init("/[0-3][0-9]-((Jan)|(Feb)|(Mar)|(Apr)|(May)|(Jun)|(Jul)|(Aug)|(Sep)|(Oct)|(Nov)|(Dec))-[0-9]{4} [0-2][0-9]:[0-5][0-9]:[0-5][0-9] [+-][0-9]{4}/", sizeof("/[0-3][0-9]-((Jan)|(Feb)|(Mar)|(Apr)|(May)|(Jun)|(Jul)|(Aug)|(Sep)|(Oct)|(Nov)|(Dec))-[0-9]{4} [0-2][0-9]:[0-5][0-9]:[0-5][0-9] [+-][0-9]{4}/") - 1, 0);
+		zend_string *regex  = ZSTR_INIT_LITERAL("/[0-3][0-9]-((Jan)|(Feb)|(Mar)|(Apr)|(May)|(Jun)|(Jul)|(Aug)|(Sep)|(Oct)|(Nov)|(Dec))-[0-9]{4} [0-2][0-9]:[0-5][0-9]:[0-5][0-9] [+-][0-9]{4}/", 0);
 		pcre_cache_entry *pce;				/* Compiled regex */
 		zval *subpats = NULL;				/* Parts (not used) */
 		int global = 0;
@@ -1420,7 +1448,7 @@ PHP_FUNCTION(imap_check)
 		RETURN_FALSE;
 	}
 
-	if (imap_conn_struct->imap_stream && imap_conn_struct->imap_stream->mailbox) {
+	if (imap_conn_struct->imap_stream->mailbox) {
 		rfc822_date(date);
 		object_init(return_value);
 		add_property_string(return_value, "Date", date);
@@ -2989,7 +3017,7 @@ PHP_FUNCTION(imap_mail_compose)
 
 			if (Z_TYPE_P(data) != IS_ARRAY) {
 				zend_argument_type_error(2, "individual body must be of type array, %s given",
-					zend_zval_type_name(data));
+					zend_zval_value_name(data));
 				goto done;
 			}
 			if (zend_hash_num_elements(Z_ARRVAL_P(data)) == 0) {

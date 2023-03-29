@@ -411,6 +411,8 @@ namespace {
 
     function imap_close(IMAP\Connection $imap, int $flags = 0): bool {}
 
+    function imap_is_open(IMAP\Connection $imap): bool {}
+
     function imap_num_msg(IMAP\Connection $imap): int|false {}
 
     function imap_num_recent(IMAP\Connection $imap): int {}
@@ -551,7 +553,7 @@ namespace {
 
     function imap_timeout(int $timeout_type, int $timeout = -1): int|bool {}
 
-    #if defined(HAVE_IMAP2000) || defined(HAVE_IMAP2001)
+    #if (defined(HAVE_IMAP2000) || defined(HAVE_IMAP2001))
     function imap_get_quota(IMAP\Connection $imap, string $quota_root): array|false {}
 
     function imap_get_quotaroot(IMAP\Connection $imap, string $mailbox): array|false {}

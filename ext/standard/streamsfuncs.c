@@ -213,10 +213,6 @@ PHP_FUNCTION(stream_socket_server)
 
 	context = php_stream_context_from_zval(zcontext, flags & PHP_FILE_NO_DEFAULT_CONTEXT);
 
-	if (context) {
-		GC_ADDREF(context->res);
-	}
-
 	if (zerrno) {
 		ZEND_TRY_ASSIGN_REF_LONG(zerrno, 0);
 	}
@@ -799,7 +795,9 @@ PHP_FUNCTION(stream_select)
 		RETURN_THROWS();
 	}
 
-	PHP_SAFE_MAX_FD(max_fd, max_set_count);
+	if (!PHP_SAFE_MAX_FD(max_fd, max_set_count)) {
+		RETURN_FALSE;
+	}
 
 	if (secnull && !usecnull) {
 		if (usec != 0) {

@@ -38,7 +38,7 @@ static void fpm_children_cleanup(int which, void *arg) /* {{{ */
 }
 /* }}} */
 
-static struct fpm_child_s *fpm_child_alloc(void) /* {{{ */
+static struct fpm_child_s *fpm_child_alloc(void)
 {
 	struct fpm_child_s *ret;
 
@@ -52,7 +52,6 @@ static struct fpm_child_s *fpm_child_alloc(void) /* {{{ */
 	ret->scoreboard_i = -1;
 	return ret;
 }
-/* }}} */
 
 static void fpm_child_free(struct fpm_child_s *child) /* {{{ */
 {
@@ -121,7 +120,7 @@ static void fpm_child_unlink(struct fpm_child_s *child) /* {{{ */
 }
 /* }}} */
 
-static struct fpm_child_s *fpm_child_find(pid_t pid) /* {{{ */
+struct fpm_child_s *fpm_child_find(pid_t pid) /* {{{ */
 {
 	struct fpm_worker_pool_s *wp;
 	struct fpm_child_s *child = 0;
@@ -177,7 +176,7 @@ int fpm_children_free(struct fpm_child_s *child) /* {{{ */
 }
 /* }}} */
 
-void fpm_children_bury() /* {{{ */
+void fpm_children_bury(void)
 {
 	int status;
 	pid_t pid;
@@ -298,12 +297,13 @@ void fpm_children_bury() /* {{{ */
 					break;
 				}
 			}
+		} else if (fpm_globals.parent_pid == 1) {
+			zlog(ZLOG_DEBUG, "unknown child (%d) exited %s - most likely an orphan process (master process is the init process)", pid, buf);
 		} else {
-			zlog(ZLOG_ALERT, "oops, unknown child (%d) exited %s. Please open a bug report (https://github.com/php/php-src/issues).", pid, buf);
+			zlog(ZLOG_WARNING, "unknown child (%d) exited %s - potentially a bug or pre exec child (e.g. s6-notifyoncheck)", pid, buf);
 		}
 	}
 }
-/* }}} */
 
 static struct fpm_child_s *fpm_resources_prepare(struct fpm_worker_pool_s *wp) /* {{{ */
 {
@@ -472,7 +472,7 @@ int fpm_children_create_initial(struct fpm_worker_pool_s *wp) /* {{{ */
 }
 /* }}} */
 
-int fpm_children_init_main() /* {{{ */
+int fpm_children_init_main(void)
 {
 	if (fpm_global_config.emergency_restart_threshold &&
 		fpm_global_config.emergency_restart_interval) {
@@ -492,4 +492,3 @@ int fpm_children_init_main() /* {{{ */
 
 	return 0;
 }
-/* }}} */

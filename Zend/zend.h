@@ -20,7 +20,7 @@
 #ifndef ZEND_H
 #define ZEND_H
 
-#define ZEND_VERSION "4.2.0-dev"
+#define ZEND_VERSION "4.3.0-dev"
 
 #define ZEND_ENGINE_3
 
@@ -39,6 +39,8 @@
 #include "zend_smart_str_public.h"
 #include "zend_smart_string_public.h"
 #include "zend_signal.h"
+#include "zend_type_code.h"
+#include "zend_max_execution_timer.h"
 
 #define zend_sprintf sprintf
 
@@ -181,6 +183,8 @@ struct _zend_class_entry {
 	zend_function *__debugInfo;
 	zend_function *__serialize;
 	zend_function *__unserialize;
+
+	const zend_object_handlers *default_object_handlers;
 
 	/* allocated only if class implements Iterator or IteratorAggregate interface */
 	zend_class_iterator_funcs *iterator_funcs_ptr;
@@ -357,6 +361,9 @@ ZEND_API ZEND_COLD void zend_value_error(const char *format, ...) ZEND_ATTRIBUTE
 
 ZEND_COLD void zenderror(const char *error);
 
+/* For internal C errors */
+ZEND_API ZEND_COLD ZEND_NORETURN void zend_strerror_noreturn(int type, int errn, const char *message);
+
 /* The following #define is used for code duality in PHP for Engine 1 & 2 */
 #define ZEND_STANDARD_CLASS_DEF_PTR zend_standard_class_def
 extern ZEND_API zend_class_entry *zend_standard_class_def;
@@ -398,6 +405,7 @@ ZEND_API void zend_save_error_handling(zend_error_handling *current);
 ZEND_API void zend_replace_error_handling(zend_error_handling_t error_handling, zend_class_entry *exception_class, zend_error_handling *current);
 ZEND_API void zend_restore_error_handling(zend_error_handling *saved);
 ZEND_API void zend_begin_record_errors(void);
+ZEND_API void zend_emit_recorded_errors(void);
 ZEND_API void zend_free_recorded_errors(void);
 END_EXTERN_C()
 

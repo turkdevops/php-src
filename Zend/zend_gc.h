@@ -23,9 +23,13 @@
 BEGIN_EXTERN_C()
 
 typedef struct _zend_gc_status {
+	bool active;
+	bool gc_protected;
+	bool full;
 	uint32_t runs;
 	uint32_t collected;
 	uint32_t threshold;
+	uint32_t buf_size;
 	uint32_t num_roots;
 } zend_gc_status;
 
@@ -41,6 +45,10 @@ ZEND_API bool gc_enabled(void);
 /* enable/disable possible root additions */
 ZEND_API bool gc_protect(bool protect);
 ZEND_API bool gc_protected(void);
+
+#if GC_BENCH
+void gc_bench_print(void);
+#endif
 
 /* The default implementation of the gc_collect_cycles callback. */
 ZEND_API int  zend_gc_collect_cycles(void);

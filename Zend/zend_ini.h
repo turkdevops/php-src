@@ -19,6 +19,8 @@
 #ifndef ZEND_INI_H
 #define ZEND_INI_H
 
+#include "zend_result.h"
+
 #define ZEND_INI_USER	(1<<0)
 #define ZEND_INI_PERDIR	(1<<1)
 #define ZEND_INI_SYSTEM	(1<<2)
@@ -87,6 +89,8 @@ ZEND_API zend_long zend_ini_long(const char *name, size_t name_length, int orig)
 ZEND_API double zend_ini_double(const char *name, size_t name_length, int orig);
 ZEND_API char *zend_ini_string(const char *name, size_t name_length, int orig);
 ZEND_API char *zend_ini_string_ex(const char *name, size_t name_length, int orig, bool *exists);
+ZEND_API zend_string *zend_ini_str(const char *name, size_t name_length, bool orig);
+ZEND_API zend_string *zend_ini_str_ex(const char *name, size_t name_length, bool orig, bool *exists);
 ZEND_API zend_string *zend_ini_get_value(zend_string *name);
 ZEND_API bool zend_ini_parse_bool(zend_string *str);
 
@@ -209,8 +213,12 @@ ZEND_API ZEND_INI_MH(OnUpdateBool);
 ZEND_API ZEND_INI_MH(OnUpdateLong);
 ZEND_API ZEND_INI_MH(OnUpdateLongGEZero);
 ZEND_API ZEND_INI_MH(OnUpdateReal);
+/* char* versions */
 ZEND_API ZEND_INI_MH(OnUpdateString);
 ZEND_API ZEND_INI_MH(OnUpdateStringUnempty);
+/* zend_string* versions */
+ZEND_API ZEND_INI_MH(OnUpdateStr);
+ZEND_API ZEND_INI_MH(OnUpdateStrNotEmpty);
 END_EXTERN_C()
 
 #define ZEND_INI_DISPLAY_ORIG	1
@@ -229,7 +237,7 @@ END_EXTERN_C()
 typedef void (*zend_ini_parser_cb_t)(zval *arg1, zval *arg2, zval *arg3, int callback_type, void *arg);
 BEGIN_EXTERN_C()
 ZEND_API int zend_parse_ini_file(zend_file_handle *fh, bool unbuffered_errors, int scanner_mode, zend_ini_parser_cb_t ini_parser_cb, void *arg);
-ZEND_API int zend_parse_ini_string(char *str, bool unbuffered_errors, int scanner_mode, zend_ini_parser_cb_t ini_parser_cb, void *arg);
+ZEND_API int zend_parse_ini_string(const char *str, bool unbuffered_errors, int scanner_mode, zend_ini_parser_cb_t ini_parser_cb, void *arg);
 END_EXTERN_C()
 
 /* INI entries */

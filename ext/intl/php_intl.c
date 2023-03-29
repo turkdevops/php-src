@@ -58,12 +58,12 @@
 #include "breakiterator/breakiterator_class.h"
 #include "breakiterator/breakiterator_iterators.h"
 
+#include <unicode/uidna.h>
 #include "idn/idn.h"
 #include "uchar/uchar.h"
 
 # include "spoofchecker/spoofchecker_class.h"
 
-#include "common/common_error.h"
 #include "common/common_enum.h"
 
 #include <unicode/uloc.h>
@@ -162,8 +162,6 @@ PHP_MINIT_FUNCTION( intl )
 
 	msgformat_register_class();
 
-	grapheme_register_constants( INIT_FUNC_ARGS_PASSTHRU );
-
 	/* Register 'DateFormat' PHP class */
 	dateformat_register_IntlDateFormatter_class(  );
 
@@ -182,12 +180,6 @@ PHP_MINIT_FUNCTION( intl )
 	/* Register 'IntlCalendar' PHP class */
 	calendar_register_IntlCalendar_class(  );
 
-	/* Expose ICU error codes to PHP scripts. */
-	intl_expose_icu_error_codes( INIT_FUNC_ARGS_PASSTHRU );
-
-	/* Expose IDN constants to PHP scripts. */
-	idn_register_constants(INIT_FUNC_ARGS_PASSTHRU);
-
 	/* Register 'Spoofchecker' PHP class */
 	spoofchecker_register_Spoofchecker_class(  );
 
@@ -195,8 +187,8 @@ PHP_MINIT_FUNCTION( intl )
 	IntlException_ce_ptr = register_class_IntlException(zend_ce_exception);
 	IntlException_ce_ptr->create_object = zend_ce_exception->create_object;
 
-	/* Register 'IntlIterator' PHP class */
-	intl_register_IntlIterator_class(  );
+	/* Register common symbols and classes */
+	intl_register_common_symbols(module_number);
 
 	/* Register 'BreakIterator' class */
 	breakiterator_register_BreakIterator_class(  );
@@ -265,7 +257,7 @@ PHP_MINFO_FUNCTION( intl )
 #endif
 
 	php_info_print_table_start();
-	php_info_print_table_header( 2, "Internationalization support", "enabled" );
+	php_info_print_table_row( 2, "Internationalization support", "enabled" );
 	php_info_print_table_row( 2, "ICU version", U_ICU_VERSION );
 #ifdef U_ICU_DATA_VERSION
 	php_info_print_table_row( 2, "ICU Data version", U_ICU_DATA_VERSION );

@@ -34,6 +34,9 @@
 #endif
 
 #include "zend_execute.h"
+#ifdef HAVE_SYS_PROCCTL_H
+#include <sys/procctl.h>
+#endif
 
 #if defined(MAP_ANON) && !defined(MAP_ANONYMOUS)
 # define MAP_ANONYMOUS MAP_ANON
@@ -151,11 +154,17 @@ static void *find_prefered_mmap_base(size_t requested_size)
 }
 #endif
 
-static int create_segments(size_t requested_size, zend_shared_segment ***shared_segments_p, int *shared_segments_count, char **error_in)
+static int create_segments(size_t requested_size, zend_shared_segment ***shared_segments_p, int *shared_segments_count, const char **error_in)
 {
 	zend_shared_segment *shared_segment;
 	int flags = PROT_READ | PROT_WRITE, fd = -1;
 	void *p;
+#if defined(HAVE_PROCCTL) && defined(PROC_WXMAP_CTL)
+	int enable_wxmap = PROC_WX_MAPPINGS_PERMIT;
+	if (procctl(P_PID, getpid(), PROC_WXMAP_CTL, &enable_wxmap) == -1) {
+		return ALLOC_FAILURE;
+	}
+#endif
 #ifdef PROT_MPROTECT
 	flags |= PROT_MPROTECT(PROT_EXEC);
 #endif
@@ -165,6 +174,9 @@ static int create_segments(size_t requested_size, zend_shared_segment ***shared_
 #endif
 #ifdef PROT_MAX
 	flags |= PROT_MAX(PROT_READ | PROT_WRITE | PROT_EXEC);
+#endif
+#ifdef MAP_JIT
+	flags |= MAP_JIT;
 #endif
 #if (defined(__linux__) || defined(__FreeBSD__)) && (defined(__x86_64__) || defined (__aarch64__))
 	void *hint = find_prefered_mmap_base(requested_size);
@@ -264,7 +276,7 @@ static size_t segment_type_size(void)
 	return sizeof(zend_shared_segment);
 }
 
-zend_shared_memory_handlers zend_alloc_mmap_handlers = {
+const zend_shared_memory_handlers zend_alloc_mmap_handlers = {
 	create_segments,
 	detach_segment,
 	segment_type_size

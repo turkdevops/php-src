@@ -64,12 +64,14 @@ const OPENSSL_ALGO_SHA1 = UNKNOWN;
  * @cvalue OPENSSL_ALGO_MD5
  */
 const OPENSSL_ALGO_MD5 = UNKNOWN;
+#ifndef OPENSSL_NO_MD4
 /**
  * @var int
  * @cvalue OPENSSL_ALGO_MD4
  */
 const OPENSSL_ALGO_MD4 = UNKNOWN;
-#ifdef HAVE_OPENSSL_MD2_H
+#endif
+#ifndef OPENSSL_NO_MD2
 /**
  * @var int
  * @cvalue OPENSSL_ALGO_MD2
@@ -104,11 +106,13 @@ const OPENSSL_ALGO_SHA384 = UNKNOWN;
  * @cvalue OPENSSL_ALGO_SHA512
  */
 const OPENSSL_ALGO_SHA512 = UNKNOWN;
+#ifndef OPENSSL_NO_RMD160
 /**
  * @var int
  * @cvalue OPENSSL_ALGO_RMD160
  */
 const OPENSSL_ALGO_RMD160 = UNKNOWN;
+#endif
 
 /* flags for S/MIME */
 
@@ -289,7 +293,7 @@ const OPENSSL_CIPHER_AES_256_CBC = UNKNOWN;
  * @cvalue OPENSSL_KEYTYPE_RSA
  */
 const OPENSSL_KEYTYPE_RSA = UNKNOWN;
-#ifndef NO_DSA
+#ifndef OPENSSL_NO_DSA
 /**
  * @var int
  * @cvalue OPENSSL_KEYTYPE_DSA
@@ -609,6 +613,8 @@ function openssl_encrypt(#[\SensitiveParameter] string $data, string $cipher_alg
 function openssl_decrypt(string $data, string $cipher_algo, #[\SensitiveParameter] string $passphrase, int $options = 0, string $iv = "", ?string $tag = null, string $aad = ""): string|false {}
 
 function openssl_cipher_iv_length(string $cipher_algo): int|false {}
+
+function openssl_cipher_key_length(string $cipher_algo): int|false {}
 
 function openssl_dh_compute_key(string $public_key, #[\SensitiveParameter] OpenSSLAsymmetricKey $private_key): string|false {}
 
