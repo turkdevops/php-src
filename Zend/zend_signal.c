@@ -62,7 +62,7 @@ ZEND_API zend_signal_globals_t zend_signal_globals;
 #endif
 
 static void zend_signal_handler(int signo, siginfo_t *siginfo, void *context);
-static int zend_signal_register(int signo, void (*handler)(int, siginfo_t*, void*));
+static zend_result zend_signal_register(int signo, void (*handler)(int, siginfo_t*, void*));
 
 #if defined(__CYGWIN__) || defined(__PASE__)
 /* Matches zend_execute_API.c; these platforms don't support ITIMER_PROF. */
@@ -81,7 +81,7 @@ static sigset_t            global_sigmask;
 
 /* {{{ zend_signal_handler_defer
  *  Blocks signals if in critical section */
-void zend_signal_handler_defer(int signo, siginfo_t *siginfo, void *context)
+static void zend_signal_handler_defer(int signo, siginfo_t *siginfo, void *context)
 {
 	int errno_save = errno;
 	zend_signal_queue_t *queue, *qtmp;
@@ -183,8 +183,7 @@ static void zend_signal_handler(int signo, siginfo_t *siginfo, void *context)
 	zend_signal_entry_t p_sig;
 #ifdef ZTS
 	if (tsrm_is_shutdown() || !tsrm_is_managed_thread()) {
-		p_sig.flags = 0;
-		p_sig.handler = SIG_DFL;
+		p_sig = global_orig_handlers[signo-1];
 	} else
 #endif
 	p_sig = SIGG(handlers)[signo-1];

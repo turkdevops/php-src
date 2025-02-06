@@ -22,10 +22,10 @@
 #ifndef ZEND_STREAM_H
 #define ZEND_STREAM_H
 
-#include "zend_result.h"
-
 #include <sys/types.h>
 #include <sys/stat.h>
+
+#include "zend_types.h"
 
 /* Lightweight stream implementation for the ZE scanners.
  * These functions are private to the engine.

@@ -22,7 +22,7 @@
  *
  */
 /*
- * The source code included in this files was separated from mbfilter.c
+ * The source code included in this file was separated from mbfilter.c
  * by Moriyoshi Koizumi <moriyoshi@php.net> on 4 Dec 2002. The file
  * mbfilter.c is included in this package .
  *
@@ -45,7 +45,8 @@ const mbfl_encoding mbfl_encoding_base64 = {
 	NULL,
 	mb_base64_to_wchar,
 	mb_wchar_to_base64,
-	NULL
+	NULL,
+	NULL,
 };
 
 const struct mbfl_convert_vtbl vtbl_8bit_b64 = {

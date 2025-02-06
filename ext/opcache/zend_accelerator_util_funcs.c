@@ -175,15 +175,15 @@ failure:
 	function2 = Z_PTR_P(t);
 	CG(in_compilation) = 1;
 	zend_set_compiled_filename(function1->op_array.filename);
-	CG(zend_lineno) = function1->op_array.opcodes[0].lineno;
+	CG(zend_lineno) = function1->op_array.line_start;
 	if (function2->type == ZEND_USER_FUNCTION
 		&& function2->op_array.last > 0) {
-		zend_error(E_ERROR, "Cannot redeclare %s() (previously declared in %s:%d)",
+		zend_error_noreturn(E_ERROR, "Cannot redeclare function %s() (previously declared in %s:%d)",
 				   ZSTR_VAL(function1->common.function_name),
 				   ZSTR_VAL(function2->op_array.filename),
-				   (int)function2->op_array.opcodes[0].lineno);
+				   (int)function2->op_array.line_start);
 	} else {
-		zend_error(E_ERROR, "Cannot redeclare %s()", ZSTR_VAL(function1->common.function_name));
+		zend_error_noreturn(E_ERROR, "Cannot redeclare function %s()", ZSTR_VAL(function1->common.function_name));
 	}
 }
 
@@ -227,9 +227,7 @@ static zend_always_inline void _zend_accel_class_hash_copy(HashTable *target, Ha
 					CG(in_compilation) = 1;
 					zend_set_compiled_filename(ce1->info.user.filename);
 					CG(zend_lineno) = ce1->info.user.line_start;
-					zend_error(E_ERROR,
-							"Cannot declare %s %s, because the name is already in use",
-							zend_get_object_type(ce1), ZSTR_VAL(ce1->name));
+					zend_class_redeclaration_error(E_ERROR, Z_PTR_P(t));
 					return;
 				}
 				continue;
@@ -357,15 +355,16 @@ static void zend_accel_do_delayed_early_binding(
 			zval *zv = zend_hash_find_known_hash(EG(class_table), early_binding->rtd_key);
 			if (zv) {
 				zend_class_entry *orig_ce = Z_CE_P(zv);
-				zend_class_entry *parent_ce =
-					zend_hash_find_ex_ptr(EG(class_table), early_binding->lc_parent_name, 1);
-				if (parent_ce) {
+				zend_class_entry *parent_ce = !(orig_ce->ce_flags & ZEND_ACC_LINKED)
+					? zend_hash_find_ex_ptr(EG(class_table), early_binding->lc_parent_name, 1)
+					: NULL;
+				if (parent_ce || (orig_ce->ce_flags & ZEND_ACC_LINKED)) {
 					ce = zend_try_early_bind(orig_ce, parent_ce, early_binding->lcname, zv);
 				}
 			}
-		}
-		if (ce && early_binding->cache_slot != (uint32_t) -1) {
-			*(void**)((char*)run_time_cache + early_binding->cache_slot) = ce;
+			if (ce && early_binding->cache_slot != (uint32_t) -1) {
+				*(void**)((char*)run_time_cache + early_binding->cache_slot) = ce;
+			}
 		}
 	}
 	CG(compiled_filename) = orig_compiled_filename;

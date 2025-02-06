@@ -153,7 +153,7 @@ int fpm_stdio_init_child(struct fpm_worker_pool_s *wp) /* {{{ */
 		close(fpm_globals.error_log_fd);
 	}
 	fpm_globals.error_log_fd = -1;
-	zlog_set_fd(-1);
+	zlog_set_fd(-1, 0);
 
 	return 0;
 }
@@ -180,10 +180,7 @@ static void fpm_stdio_child_said(struct fpm_event_s *ev, short which, void *arg)
 	if (!arg) {
 		return;
 	}
-	child = fpm_child_find((intptr_t) arg);
-	if (!child) {
-		return;
-	}
+	child = (struct fpm_child_s *) arg;
 
 	is_stdout = (fd == child->fd_stdout);
 	if (is_stdout) {
@@ -231,7 +228,7 @@ stdio_read:
 			if 	((sizeof(FPM_STDIO_CMD_FLUSH) - cmd_pos) <= in_buf &&
 					!memcmp(buf, &FPM_STDIO_CMD_FLUSH[cmd_pos], sizeof(FPM_STDIO_CMD_FLUSH) - cmd_pos)) {
 				zlog_stream_finish(log_stream);
-				start = cmd_pos;
+				start = sizeof(FPM_STDIO_CMD_FLUSH) - cmd_pos;
 			} else {
 				zlog_stream_str(log_stream, &FPM_STDIO_CMD_FLUSH[0], cmd_pos);
 			}
@@ -276,6 +273,7 @@ stdio_read:
 
 		fpm_event_del(event);
 
+		child->postponed_free = true;
 		if (is_stdout) {
 			close(child->fd_stdout);
 			child->fd_stdout = -1;
@@ -329,10 +327,10 @@ int fpm_stdio_parent_use_pipes(struct fpm_child_s *child) /* {{{ */
 	child->fd_stdout = fd_stdout[0];
 	child->fd_stderr = fd_stderr[0];
 
-	fpm_event_set(&child->ev_stdout, child->fd_stdout, FPM_EV_READ, fpm_stdio_child_said, (void *) (intptr_t) child->pid);
+	fpm_event_set(&child->ev_stdout, child->fd_stdout, FPM_EV_READ, fpm_stdio_child_said, child);
 	fpm_event_add(&child->ev_stdout, 0);
 
-	fpm_event_set(&child->ev_stderr, child->fd_stderr, FPM_EV_READ, fpm_stdio_child_said, (void *) (intptr_t) child->pid);
+	fpm_event_set(&child->ev_stderr, child->fd_stderr, FPM_EV_READ, fpm_stdio_child_said, child);
 	fpm_event_add(&child->ev_stderr, 0);
 	return 0;
 }
@@ -376,13 +374,14 @@ int fpm_stdio_open_error_log(int reopen) /* {{{ */
 		php_openlog(fpm_global_config.syslog_ident, LOG_PID | LOG_CONS, fpm_global_config.syslog_facility);
 		fpm_globals.error_log_fd = ZLOG_SYSLOG;
 		if (fpm_use_error_log()) {
-			zlog_set_fd(fpm_globals.error_log_fd);
+			zlog_set_fd(fpm_globals.error_log_fd, 0);
 		}
 		return 0;
 	}
 #endif
 
 	fd = open(fpm_global_config.error_log, O_WRONLY | O_APPEND | O_CREAT, S_IRUSR | S_IWUSR);
+
 	if (0 > fd) {
 		zlog(ZLOG_SYSERROR, "failed to open error_log (%s)", fpm_global_config.error_log);
 		return -1;
@@ -395,7 +394,11 @@ int fpm_stdio_open_error_log(int reopen) /* {{{ */
 	} else {
 		fpm_globals.error_log_fd = fd;
 		if (fpm_use_error_log()) {
-			zlog_set_fd(fpm_globals.error_log_fd);
+			bool is_stderr = (
+				strcmp(fpm_global_config.error_log, "/dev/stderr") == 0 ||
+				strcmp(fpm_global_config.error_log, "/proc/self/fd/2") == 0
+			);
+			zlog_set_fd(fpm_globals.error_log_fd, is_stderr);
 		}
 	}
 	if (0 > fcntl(fd, F_SETFD, fcntl(fd, F_GETFD) | FD_CLOEXEC)) {

@@ -19,26 +19,9 @@
 #ifndef ZEND_STRING_H
 #define ZEND_STRING_H
 
+#include "zend_types.h"
+#include "zend_gc.h"
 #include "zend_alloc.h"
-#include "zend_char.h"
-#include "zend_portability.h"
-#include "zend_refcounted.h"
-
-/* string flags (zval.value->gc.u.flags) */
-#define IS_STR_CLASS_NAME_MAP_PTR   GC_PROTECTED  /* refcount is a map_ptr offset of class_entry */
-#define IS_STR_INTERNED				GC_IMMUTABLE  /* interned string */
-#define IS_STR_PERSISTENT			GC_PERSISTENT /* allocated using malloc */
-#define IS_STR_PERMANENT        	(1<<8)        /* relives request boundary */
-#define IS_STR_VALID_UTF8           (1<<9)        /* valid UTF-8 according to PCRE */
-
-typedef struct _zend_string zend_string;
-
-struct _zend_string {
-	zend_refcounted_h gc;
-	zend_ulong        h;                /* hash value */
-	size_t            len;
-	char              val[1];
-};
 
 BEGIN_EXTERN_C()
 
@@ -430,6 +413,19 @@ static zend_always_inline bool zend_string_starts_with(const zend_string *str, c
 #define zend_string_starts_with_literal(str, prefix) \
 	zend_string_starts_with_cstr(str, prefix, strlen(prefix))
 
+static zend_always_inline bool zend_string_starts_with_cstr_ci(const zend_string *str, const char *prefix, size_t prefix_length)
+{
+	return ZSTR_LEN(str) >= prefix_length && !strncasecmp(ZSTR_VAL(str), prefix, prefix_length);
+}
+
+static zend_always_inline bool zend_string_starts_with_ci(const zend_string *str, const zend_string *prefix)
+{
+	return zend_string_starts_with_cstr_ci(str, ZSTR_VAL(prefix), ZSTR_LEN(prefix));
+}
+
+#define zend_string_starts_with_literal_ci(str, prefix) \
+	zend_string_starts_with_cstr_ci(str, prefix, strlen(prefix))
+
 /*
  * DJBX33A (Daniel J. Bernstein, Times 33 with Addition)
  *
@@ -564,6 +560,8 @@ EMPTY_SWITCH_DEFAULT_CASE()
 #endif
 }
 
+// When adding a new string here, please also update build/gen_stub.php to the
+// known strings to be used in property registration; see gh-15751
 #define ZEND_KNOWN_STRINGS(_) \
 	_(ZEND_STR_FILE,                   "file") \
 	_(ZEND_STR_LINE,                   "line") \
@@ -576,6 +574,7 @@ EMPTY_SWITCH_DEFAULT_CASE()
 	_(ZEND_STR_ARGS,                   "args") \
 	_(ZEND_STR_UNKNOWN,                "unknown") \
 	_(ZEND_STR_UNKNOWN_CAPITALIZED,    "Unknown") \
+	_(ZEND_STR_EXIT,                   "exit") \
 	_(ZEND_STR_EVAL,                   "eval") \
 	_(ZEND_STR_INCLUDE,                "include") \
 	_(ZEND_STR_REQUIRE,                "require") \
@@ -637,6 +636,10 @@ EMPTY_SWITCH_DEFAULT_CASE()
 	_(ZEND_STR_COUNT,                  "count") \
 	_(ZEND_STR_SENSITIVEPARAMETER,     "SensitiveParameter") \
 	_(ZEND_STR_CONST_EXPR_PLACEHOLDER, "[constant expression]") \
+	_(ZEND_STR_DEPRECATED_CAPITALIZED, "Deprecated") \
+	_(ZEND_STR_SINCE,                  "since") \
+	_(ZEND_STR_GET,                    "get") \
+	_(ZEND_STR_SET,                    "set") \
 
 
 typedef enum _zend_known_string_id {

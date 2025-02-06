@@ -19,7 +19,7 @@
 #ifndef ZEND_INI_H
 #define ZEND_INI_H
 
-#include "zend_result.h"
+#include "zend_modules.h"
 
 #define ZEND_INI_USER	(1<<0)
 #define ZEND_INI_PERDIR	(1<<1)
@@ -60,6 +60,7 @@ struct _zend_ini_entry {
 	uint8_t orig_modifiable;
 	uint8_t modified;
 
+	const zend_ini_entry_def *def;
 };
 
 BEGIN_EXTERN_C()
@@ -236,8 +237,8 @@ END_EXTERN_C()
 /* INI parsing engine */
 typedef void (*zend_ini_parser_cb_t)(zval *arg1, zval *arg2, zval *arg3, int callback_type, void *arg);
 BEGIN_EXTERN_C()
-ZEND_API int zend_parse_ini_file(zend_file_handle *fh, bool unbuffered_errors, int scanner_mode, zend_ini_parser_cb_t ini_parser_cb, void *arg);
-ZEND_API int zend_parse_ini_string(const char *str, bool unbuffered_errors, int scanner_mode, zend_ini_parser_cb_t ini_parser_cb, void *arg);
+ZEND_API zend_result zend_parse_ini_file(zend_file_handle *fh, bool unbuffered_errors, int scanner_mode, zend_ini_parser_cb_t ini_parser_cb, void *arg);
+ZEND_API zend_result zend_parse_ini_string(const char *str, bool unbuffered_errors, int scanner_mode, zend_ini_parser_cb_t ini_parser_cb, void *arg);
 END_EXTERN_C()
 
 /* INI entries */

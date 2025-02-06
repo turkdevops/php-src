@@ -36,7 +36,7 @@
 /* 8 - Standalone Open Source Zend OPcache */
 #define ACCELERATOR_API_NO 8
 
-#if ZEND_WIN32
+#ifdef ZEND_WIN32
 # include "zend_config.w32.h"
 #else
 #include "zend_config.h"
@@ -44,8 +44,8 @@
 # include <sys/resource.h>
 #endif
 
-#if HAVE_UNISTD_H
-# include "unistd.h"
+#ifdef HAVE_UNISTD_H
+# include <unistd.h>
 #endif
 
 #include "zend_extensions.h"
@@ -97,7 +97,7 @@ extern int lock_file;
 # define ENABLE_FILE_CACHE_FALLBACK 0
 #endif
 
-#if ZEND_WIN32
+#ifdef ZEND_WIN32
 typedef unsigned __int64 accel_time_t;
 #else
 typedef time_t accel_time_t;
@@ -132,14 +132,10 @@ typedef struct _zend_persistent_script {
 	void          *mem;                    /* shared memory area used by script structures */
 	size_t         size;                   /* size of used shared memory */
 
-	/* All entries that shouldn't be counted in the ADLER32
-	 * checksum must be declared in this struct
-	 */
 	struct zend_persistent_script_dynamic_members {
 		time_t       last_used;
 		zend_ulong   hits;
 		unsigned int memory_consumption;
-		unsigned int checksum;
 		time_t       revalidate;
 	} dynamic_members;
 } zend_persistent_script;
@@ -149,7 +145,6 @@ typedef struct _zend_accel_directives {
 	zend_long           max_accelerated_files;
 	double         max_wasted_percentage;
 	char          *user_blacklist_filename;
-	zend_long           consistency_checks;
 	zend_long           force_restart_timeout;
 	bool      use_cwd;
 	bool      ignore_dups;
@@ -182,6 +177,7 @@ typedef struct _zend_accel_directives {
 	char          *lockfile_path;
 #endif
 	char          *file_cache;
+	bool      file_cache_read_only;
 	bool      file_cache_only;
 	bool      file_cache_consistency_checks;
 #if ENABLE_FILE_CACHE_FALLBACK
@@ -228,8 +224,7 @@ typedef struct _zend_accel_globals {
 	const zend_op          *cache_opline;
 	zend_persistent_script *cache_persistent_script;
 	/* preallocated buffer for keys */
-	zend_string             key;
-	char                    _key[MAXPATHLEN * 8];
+	zend_string            *key;
 } zend_accel_globals;
 
 typedef struct _zend_string_table {
@@ -240,6 +235,11 @@ typedef struct _zend_string_table {
 	zend_string *end;
 	zend_string *saved_top;
 } zend_string_table;
+
+typedef uint32_t zend_string_table_pos_t;
+
+#define ZEND_STRING_TABLE_POS_MAX UINT32_MAX
+#define ZEND_STRING_TABLE_POS_ALIGNMENT 8
 
 typedef struct _zend_accel_shared_globals {
 	/* Cache Data Structures */
@@ -266,6 +266,7 @@ typedef struct _zend_accel_shared_globals {
 	LONGLONG   restart_in;
 #endif
 	bool       restart_in_progress;
+	bool       jit_counters_stopped;
 
 	/* Preloading */
 	zend_persistent_script *preload_script;
@@ -279,7 +280,7 @@ typedef struct _zend_accel_shared_globals {
 	const void **jit_exit_groups;
 
 	/* Interned Strings Support (must be the last element) */
-	zend_string_table interned_strings;
+	ZEND_SET_ALIGNED(ZEND_STRING_TABLE_POS_ALIGNMENT, zend_string_table interned_strings);
 } zend_accel_shared_globals;
 
 #ifdef ZEND_WIN32
@@ -310,7 +311,7 @@ extern const char *zps_api_failure_reason;
 BEGIN_EXTERN_C()
 
 void accel_shutdown(void);
-zend_result  accel_activate(INIT_FUNC_ARGS);
+zend_result accel_activate(INIT_FUNC_ARGS);
 zend_result accel_post_deactivate(void);
 void zend_accel_schedule_restart(zend_accel_restart_reason reason);
 void zend_accel_schedule_restart_if_necessary(zend_accel_restart_reason reason);

@@ -14,7 +14,7 @@
  */
 
 #ifdef HAVE_CONFIG_H
-#include "config.h"
+#include <config.h>
 #endif
 
 #include "php_intl.h"
@@ -370,7 +370,7 @@ zval* collator_normalize_sort_argument( zval* arg, zval *rv )
 
 	if( Z_TYPE_P( arg ) != IS_STRING )
 	{
-		/* If its not a string then nothing to do.
+		/* If it's not a string then nothing to do.
 		 * Return original arg.
 		 */
 		COLLATOR_CONVERT_RETURN_FAILED( arg );

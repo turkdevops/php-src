@@ -45,7 +45,7 @@ typedef zend_ulong *zend_bitset;
 	(zend_bitset)do_alloca((n) * ZEND_BITSET_ELM_SIZE, use_heap)
 
 /* Number of trailing zero bits (0x01 -> 0; 0x40 -> 6; 0x00 -> LEN) */
-static zend_always_inline int zend_ulong_ntz(zend_ulong num)
+ZEND_ATTRIBUTE_CONST static zend_always_inline int zend_ulong_ntz(zend_ulong num)
 {
 #if (defined(__GNUC__) || __has_builtin(__builtin_ctzl)) \
 	&& SIZEOF_ZEND_LONG == SIZEOF_LONG && defined(PHP_HAVE_BUILTIN_CTZL)
@@ -60,7 +60,6 @@ static zend_always_inline int zend_ulong_ntz(zend_ulong num)
 #else
 	if (!BitScanForward(&index, num)) {
 #endif
-		/* undefined behavior */
 		return SIZEOF_ZEND_LONG * 8;
 	}
 
@@ -83,7 +82,7 @@ static zend_always_inline int zend_ulong_ntz(zend_ulong num)
 }
 
 /* Number of leading zero bits (Undefined for zero) */
-static zend_always_inline int zend_ulong_nlz(zend_ulong num)
+ZEND_ATTRIBUTE_CONST static zend_always_inline int zend_ulong_nlz(zend_ulong num)
 {
 #if (defined(__GNUC__) || __has_builtin(__builtin_clzl)) \
 	&& SIZEOF_ZEND_LONG == SIZEOF_LONG && defined(PHP_HAVE_BUILTIN_CLZL)
@@ -98,7 +97,6 @@ static zend_always_inline int zend_ulong_nlz(zend_ulong num)
 #else
 	if (!BitScanReverse(&index, num)) {
 #endif
-		/* undefined behavior */
 		return SIZEOF_ZEND_LONG * 8;
 	}
 

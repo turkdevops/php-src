@@ -38,7 +38,7 @@ typedef struct dba_lock {
 typedef struct dba_info {
 	/* public */
 	void *dbf;               /* ptr to private data or whatever */
-	char *path;
+	zend_string *path;
 	dba_mode_t mode;
 	php_stream *fp;  /* this is the database stream for builtin handlers */
 	int fd;
@@ -51,6 +51,12 @@ typedef struct dba_info {
 	const struct dba_handler *hnd;
 	dba_lock lock;
 } dba_info;
+
+typedef struct dba_connection {
+	dba_info *info;
+	zend_string *hash;
+	zend_object std;
+} dba_connection;
 
 #define DBA_DEFAULT_DRIVER_FLAGS -1
 

@@ -53,13 +53,13 @@
 static const zend_shared_memory_handlers *g_shared_alloc_handler = NULL;
 static const char *g_shared_model;
 /* pointer to globals allocated in SHM and shared across processes */
-zend_smm_shared_globals *smm_shared_globals;
+ZEND_EXT_API zend_smm_shared_globals *smm_shared_globals;
 
 #ifndef ZEND_WIN32
 #ifdef ZTS
 static MUTEX_T zts_lock;
 #endif
-int lock_file;
+int lock_file = -1;
 static char lockfile_name[MAXPATHLEN];
 #endif
 
@@ -100,10 +100,19 @@ void zend_shared_alloc_create_lock(char *lockfile_path)
 		return;
 #endif
 
+#ifdef O_TMPFILE
+	lock_file = open(lockfile_path, O_RDWR | O_TMPFILE | O_EXCL | O_CLOEXEC, 0666);
+	/* lack of O_TMPFILE support results in many possible errors
+	 * use it only when open returns a non-negative integer */
+	if (lock_file >= 0) {
+		return;
+	}
+#endif
+
 	snprintf(lockfile_name, sizeof(lockfile_name), "%s/%sXXXXXX", lockfile_path, SEM_FILENAME_PREFIX);
 	lock_file = mkstemp(lockfile_name);
 	if (lock_file == -1) {
-		zend_accel_error_noreturn(ACCEL_LOG_FATAL, "Unable to create lock file: %s (%d)", strerror(errno), errno);
+		zend_accel_error_noreturn(ACCEL_LOG_FATAL, "Unable to create opcache lock file in %s: %s (%d)", lockfile_path, strerror(errno), errno);
 	}
 
 	fchmod(lock_file, 0666);
@@ -199,8 +208,8 @@ int zend_shared_alloc_startup(size_t requested_size, size_t reserved_size)
 				res = zend_shared_alloc_try(he, requested_size, &ZSMMG(shared_segments), &ZSMMG(shared_segments_count), &error_in);
 				if (res) {
 					/* this model works! */
+					break;
 				}
-				break;
 			}
 		}
 	}
@@ -211,6 +220,7 @@ int zend_shared_alloc_startup(size_t requested_size, size_t reserved_size)
 	}
 #if ENABLE_FILE_CACHE_FALLBACK
 	if (ALLOC_FALLBACK == res) {
+		smm_shared_globals = NULL;
 		return ALLOC_FALLBACK;
 	}
 #endif
@@ -236,6 +246,7 @@ int zend_shared_alloc_startup(size_t requested_size, size_t reserved_size)
 	}
 #if ENABLE_FILE_CACHE_FALLBACK
 	if (ALLOC_FALLBACK == res) {
+		smm_shared_globals = NULL;
 		return ALLOC_FALLBACK;
 	}
 #endif
@@ -270,7 +281,7 @@ int zend_shared_alloc_startup(size_t requested_size, size_t reserved_size)
 	free(ZSMMG(shared_segments));
 	ZSMMG(shared_segments) = tmp_shared_segments;
 
-	ZSMMG(shared_memory_state).positions = (int *)zend_shared_alloc(sizeof(int) * ZSMMG(shared_segments_count));
+	ZSMMG(shared_memory_state).positions = (size_t *)zend_shared_alloc(sizeof(size_t) * ZSMMG(shared_segments_count));
 	if (!ZSMMG(shared_memory_state).positions) {
 		zend_accel_error_noreturn(ACCEL_LOG_FATAL, "Insufficient shared memory!");
 		return ALLOC_FAILURE;
@@ -355,15 +366,15 @@ static size_t zend_shared_alloc_get_largest_free_block(void)
 
 void *zend_shared_alloc(size_t size)
 {
-	ZEND_ASSERT(ZCG(locked));
-
 	int i;
-	unsigned int block_size = ZEND_ALIGNED_SIZE(size);
+	size_t block_size = ZEND_ALIGNED_SIZE(size);
 
-	if (UNEXPECTED(block_size < size)) {
-		zend_accel_error_noreturn(ACCEL_LOG_ERROR, "Possible integer overflow in shared memory allocation (%zu + %zu)", size, PLATFORM_ALIGNMENT);
+#if 1
+	if (!ZCG(locked)) {
+		ZEND_ASSERT(0 && "Shared memory lock not obtained");
+		zend_accel_error_noreturn(ACCEL_LOG_ERROR, "Shared memory lock not obtained");
 	}
-
+#endif
 	if (block_size > ZSMMG(shared_free)) { /* No hope to find a big-enough block */
 		SHARED_ALLOC_FAILED();
 		return NULL;

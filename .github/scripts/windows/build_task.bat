@@ -1,28 +1,10 @@
 @echo off
 
-if /i "%APPVEYOR%%GITHUB_ACTIONS%" neq "True" (
+if /i "%GITHUB_ACTIONS%" neq "True" (
     echo for CI only
     exit /b 3
 )
 
-if "%APPVEYOR%" equ "True" rmdir /s /q C:\cygwin >NUL 2>NUL
-if %errorlevel% neq 0 exit /b 3
-if "%APPVEYOR%" equ "True" rmdir /s /q C:\cygwin64 >NUL 2>NUL
-if %errorlevel% neq 0 exit /b 3
-if "%APPVEYOR%" equ "True" rmdir /s /q C:\mingw >NUL 2>NUL
-if %errorlevel% neq 0 exit /b 3
-if "%APPVEYOR%" equ "True" rmdir /s /q C:\mingw-w64 >NUL 2>NUL
-if %errorlevel% neq 0 exit /b 3
-if "%APPVEYOR%" equ "True" rmdir /s /q C:\msys64 >NUL 2>NUL
-if %errorlevel% neq 0 exit /b 3
-if "%APPVEYOR%" equ "True" rmdir /s /q c:\OpenSSL-Win32 >NUL 2>NUL
-if %errorlevel% neq 0 exit /b 3
-if "%APPVEYOR%" equ "True" rmdir /s /q c:\OpenSSL-Win64 >NUL 2>NUL
-if %errorlevel% neq 0 exit /b 3
-if "%APPVEYOR%" equ "True" rmdir /s /q c:\OpenSSL-v11-Win32 >NUL 2>NUL
-if %errorlevel% neq 0 exit /b 3
-if "%APPVEYOR%" equ "True" rmdir /s /q c:\OpenSSL-v11-Win64 >NUL 2>NUL
-if %errorlevel% neq 0 exit /b 3
 del /f /q C:\Windows\System32\libcrypto-1_1-x64.dll >NUL 2>NUL
 if %errorlevel% neq 0 exit /b 3
 del /f /q C:\Windows\System32\libssl-1_1-x64.dll >NUL 2>NUL
@@ -48,18 +30,13 @@ if %errorlevel% neq 0 exit /b 3
 
 if "%THREAD_SAFE%" equ "0" set ADD_CONF=%ADD_CONF% --disable-zts
 if "%INTRINSICS%" neq "" set ADD_CONF=%ADD_CONF% --enable-native-intrinsics=%INTRINSICS%
+if "%ASAN%" equ "1" set ADD_CONF=%ADD_CONF% --enable-sanitizer --enable-debug-pack
 
-rem Some undefined behavior is reported on 32-bit, this should be fixed
-if "%PLATFORM%" == "x86" (
-	set CFLAGS=/W1
-) else (
-	set CFLAGS=/W1 /WX
-)
+set CFLAGS=/W2 /WX /w14013 /wd4146 /wd4244
 
 cmd /c configure.bat ^
 	--enable-snapshot-build ^
 	--disable-debug-pack ^
-	--enable-com-dotnet=shared ^
 	--without-analyzer ^
 	--enable-object-out-dir=%PHP_BUILD_OBJ_DIR% ^
 	--with-php-build=%DEPS_DIR% ^

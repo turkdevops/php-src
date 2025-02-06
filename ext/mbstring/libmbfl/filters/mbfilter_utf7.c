@@ -22,7 +22,7 @@
  *
  */
 /*
- * The source code included in this files was separated from mbfilter.c
+ * The source code included in this file was separated from mbfilter.c
  * by moriyoshi koizumi <moriyoshi@php.net> on 4 dec 2002.
  *
  */
@@ -62,7 +62,8 @@ const mbfl_encoding mbfl_encoding_utf7 = {
 	&vtbl_wchar_utf7,
 	mb_utf7_to_wchar,
 	mb_wchar_to_utf7,
-	mb_check_utf7
+	mb_check_utf7,
+	NULL,
 };
 
 const struct mbfl_convert_vtbl vtbl_utf7_wchar = {

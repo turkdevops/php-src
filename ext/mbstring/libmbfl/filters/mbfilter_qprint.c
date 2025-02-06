@@ -22,7 +22,7 @@
  *
  */
 /*
- * The source code included in this files was separated from mbfilter.c
+ * The source code included in this file was separated from mbfilter.c
  * by moriyoshi koizumi <moriyoshi@php.net> on 4 dec 2002.
  *
  */
@@ -46,7 +46,8 @@ const mbfl_encoding mbfl_encoding_qprint = {
 	NULL,
 	mb_qprint_to_wchar,
 	mb_wchar_to_qprint,
-	NULL
+	NULL,
+	NULL,
 };
 
 const struct mbfl_convert_vtbl vtbl_8bit_qprint = {

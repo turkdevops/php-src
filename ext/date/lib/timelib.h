@@ -1,7 +1,7 @@
 /*
  * The MIT License (MIT)
  *
- * Copyright (c) 2015-2023 Derick Rethans
+ * Copyright (c) 2015-2024 Derick Rethans
  * Copyright (c) 2018,2021 MongoDB, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -30,9 +30,9 @@
 # include "timelib_config.h"
 #endif
 
-#define TIMELIB_VERSION 202205
-#define TIMELIB_EXTENDED_VERSION 20220501
-#define TIMELIB_ASCII_VERSION "2022.05"
+#define TIMELIB_VERSION 202212
+#define TIMELIB_EXTENDED_VERSION 20221201
+#define TIMELIB_ASCII_VERSION "2022.12"
 
 #include <stdlib.h>
 #include <stdbool.h>
@@ -379,7 +379,7 @@ typedef struct _timelib_tzdb {
 #define TIMELIB_OVERRIDE_TIME    0x01
 #define TIMELIB_NO_CLONE         0x02
 
-#define TIMELIB_UNSET   -99999
+#define TIMELIB_UNSET   -9999999
 
 /* An entry for each of these error codes is also in the
  * timelib_error_messages array in timelib.c.

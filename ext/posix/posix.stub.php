@@ -198,6 +198,20 @@ const POSIX_RLIMIT_INFINITY = UNKNOWN;
  */
 const POSIX_SC_ARG_MAX = UNKNOWN;
 #endif
+#ifdef _SC_CHILD_MAX
+/**
+ * @var int
+ * @cvalue _SC_CHILD_MAX
+ */
+const POSIX_SC_CHILD_MAX = UNKNOWN;
+#endif
+#ifdef _SC_CLK_TCK
+/**
+ * @var int
+ * @cvalue _SC_CLK_TCK
+ */
+const POSIX_SC_CLK_TCK = UNKNOWN;
+#endif
 #ifdef _SC_PAGESIZE
 /**
  * @var int
@@ -288,6 +302,13 @@ const POSIX_PC_ALLOC_SIZE_MIN = UNKNOWN;
  * @cvalue _PC_SYMLINK_MAX
  */
 const POSIX_PC_SYMLINK_MAX = UNKNOWN;
+#endif
+#ifdef _SC_OPEN_MAX
+/**
+ * @var int
+ * @cvalue _SC_OPEN_MAX
+ */
+const POSIX_SC_OPEN_MAX = UNKNOWN;
 #endif
 
 function posix_kill(int $process_id, int $signal): bool {}
@@ -432,8 +453,11 @@ function posix_initgroups(string $username, int $group_id): bool {}
 
 function posix_sysconf(int $conf_id): int {}
 
-#ifdef HAVE_POSIX_PATHCONF
+#ifdef HAVE_PATHCONF
 function posix_pathconf(string $path, int $name): int|false {}
+#endif
+
+#ifdef HAVE_FPATHCONF
 /** @param resource|int $file_descriptor */
 function posix_fpathconf($file_descriptor, int $name): int|false {}
 #endif

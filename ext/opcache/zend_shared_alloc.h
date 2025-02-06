@@ -95,7 +95,7 @@ typedef struct _handler_entry {
 } zend_shared_memory_handler_entry;
 
 typedef struct _zend_shared_memory_state {
-	int *positions;   /* current positions for each segment */
+	size_t *positions;  /* current positions for each segment */
 	size_t shared_free; /* amount of free shared memory */
 } zend_shared_memory_state;
 
@@ -119,7 +119,7 @@ typedef struct _zend_smm_shared_globals {
 	size_t                     reserved_size;
 } zend_smm_shared_globals;
 
-extern zend_smm_shared_globals *smm_shared_globals;
+ZEND_EXT_API extern zend_smm_shared_globals *smm_shared_globals;
 
 #define ZSMMG(element)		(smm_shared_globals->element)
 

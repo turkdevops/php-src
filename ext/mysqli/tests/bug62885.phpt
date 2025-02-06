@@ -4,7 +4,7 @@ Bug #62885 (mysqli_poll - Segmentation fault)
 mysqli
 --SKIPIF--
 <?php
-require_once("connect.inc");
+require_once 'connect.inc';
 ?>
 --FILE--
 <?php
@@ -16,7 +16,6 @@ try {
     echo $e->getMessage() . \PHP_EOL;
 }
 
-$test2 = array();
 $test2 = array();
 try {
     $test1 = mysqli_poll($test2, $test3, $tablica, 0);
