@@ -2,6 +2,10 @@ PHP                                                                        NEWS
 |||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
 ?? ??? ????, PHP 8.4.26
 
+- BCMath:
+  . Fixed out-of-bounds read in bc_is_zero_for_scale() when scale exceeds
+    n_scale. (Ilia Alshanetsky)
+
 - Core:
   . Fixed bug GH-15375 (Nested "yield from" skips items after a valid() or
     next() call on the inner generator). (iliaal)
