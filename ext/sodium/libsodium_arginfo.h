@@ -1,6 +1,9 @@
 /* This is a generated file, edit libsodium.stub.php instead.
  * Stub hash: 82dc3f80ea85b0c71ed9db9b111097f3eb49d71d */
 
+#include "zend_attributes.h"
+#include "zend_constants.h"
+
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_sodium_crypto_aead_aes256gcm_is_available, 0, 0, _IS_BOOL, 0)
 ZEND_END_ARG_INFO()
 
