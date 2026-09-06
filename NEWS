@@ -2,6 +2,10 @@ PHP                                                                        NEWS
 |||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
 ?? ??? ????, PHP 8.6.0beta3
 
+- BCMath:
+  . Fixed out-of-bounds read in bc_is_zero_for_scale() when scale exceeds
+    n_scale. (Ilia Alshanetsky)
+
 - Core:
   . Calling is_a() or is_subclass_of() with a string as the first argument
     when $allow_string is false is now deprecated. (Daniel Scherzer)
