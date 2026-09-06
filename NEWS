@@ -346,6 +346,10 @@ PHP                                                                        NEWS
     (Girgias)
 
 - Standard:
+  . Passing an object as the $data argument to http_build_query() is now
+    deprecated. The interpretation of object values within $data as arrays
+    is also deprecated. Convert objects to arrays with get_object_vars()
+    before calling the function. (Girgias)
   . Added the "filter.max_filter_count" stream context option for php://filter
     URLs. Using more than 16 filters without configuring this option is now
     deprecated. (Sjoerd Langkemper)
